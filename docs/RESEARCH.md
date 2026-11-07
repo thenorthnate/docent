@@ -1,6 +1,6 @@
-# GAIT — Landscape Research
+# Docent — Landscape Research
 
-_Snapshot: November 2026. Captured from the planning conversation so later sessions start with the same context._
+_Snapshot: November 2026. Captured from the planning conversation so later sessions start with the same context. The project was called GAIT at the time._
 
 ## Question
 
@@ -45,7 +45,56 @@ The **Agent Client Protocol (ACP)** is an open JSON-RPC-over-stdio protocol (ori
 
 GitHub Copilot's own multi-agent support (Claude/Codex inside Copilot) is tied to a Copilot subscription and the Copilot harness; it does not accept Kiro.
 
-## Sources
+## Fact check of the plan (November 2026)
+
+From docs and source reading. No live ACP sessions were run. Kiro findings are medium confidence, because no public source was available.
+
+### ACP and read-only enforcement
+
+- The ACP spec says agents "MAY" request permission, so `session/request_permission` is optional. Not advertising `fs` or terminal capabilities only stops agents calling those client methods, not their built-in tools.
+- **claude-agent-acp**: loads user, project and local settings by default. User allow rules resolve before the client is asked. SDK sessions show no trust dialog, so repo hooks in `.claude/settings.json` can run. There's no true read-only mode; `plan` still runs read-only shell commands. A client can pass `settingSources: []`, `tools`, `disallowedTools`, `strictMcpConfig` and `settings: {disableAllHooks: true}` through `_meta.claudeCode.options`, and must call `session/set_mode` to set the mode. The combination is untested.
+- **kiro-cli acp**: workspace reads and read-only git/system commands are allowed silently, and other actions prompt. Configured policy outranks client responses. Workspace trust blocks repo config in interactive V3 sessions, but the docs don't say whether it applies under ACP. Read-only options are presets, the Plan agent, or a custom agent with a `tools` list. `KIRO_HOME` can isolate global config.
+- **MCP**: stdio MCP is mandatory for agents, and clients may pass servers per session. claude-agent-acp honours this. Kiro V3 accepts `mcpServers`, but the docs don't explicitly confirm stdio.
+- **Usage**: ACP `usage_update` reports context tokens and optional cumulative cost. claude-agent-acp sends it. Kiro documents `_meta.kiro` metering instead.
+
+### Sandboxing
+
+- macOS `sandbox-exec` is deprecated but still works, and is what Claude Code and Kiro rely on. Linux has bubblewrap and Landlock. Windows is the weak spot.
+- `anthropics/sandbox-runtime` is a beta off-the-shelf wrapper, and it allows reads everywhere unless paths are denied.
+- The built-in sandboxes in Claude Code and Kiro don't stop repo hooks, so the whole agent process would need wrapping.
+
+### GitHub
+
+- GraphQL is POST, and GitHub doesn't support conditional POST requests, so expect no 304s (inferred, not tested).
+- REST `/notifications` supports `Last-Modified` and `X-Poll-Interval`, and a 304 with a correct `Authorization` header doesn't count against the primary rate limit. Notifications may not cover CI changes. The docs say this endpoint needs a classic PAT rather than GitHub App tokens, and don't mention OAuth tokens.
+- Each GHES instance needs its own OAuth App. SAML SSO orgs need an active session when authorizing, and may need owner approval.
+- `gh auth token --hostname` is viable, including refresh. It requires `gh`, and the token dies on `gh` logout.
+
+### Linters on untrusted code
+
+- `eslint`: executes repo code (config is imported), and plugins need `node_modules`.
+- `cargo clippy`: executes `build.rs` and proc macros. `.cargo/config.toml` and `rust-toolchain.toml` add further risk.
+- `ruff`: the safest; `--isolated` ignores config and it needs no dependencies.
+- `golangci-lint`: mixed; a repo config may load a Go plugin. Use `--no-config`, and `GOTOOLCHAIN=local`.
+
+### Naming
+
+- Tauri warns about identifiers ending in `.app`.
+- `gait` was taken on crates.io, npm and PyPI, and `Clyra-AI/gait` is an AI agent policy tool.
+- `docent` is free on crates.io and Homebrew casks, taken on npm and PyPI. `TransluceAI/docent` is an AI tool with the same name. No trademark search has been done.
+
+### Fact-check sources
+
+- ACP — https://agentclientprotocol.com/protocol/tool-calls, https://agentclientprotocol.com/protocol/session-setup, https://agentclientprotocol.com/announcements/session-usage-stabilized
+- claude-agent-acp — https://github.com/agentclientprotocol/claude-agent-acp/blob/main/src/acp-agent.ts
+- Claude Code — https://code.claude.com/docs/en/agent-sdk/permissions, https://code.claude.com/docs/en/sandboxing
+- Kiro — https://kiro.dev/docs/cli/v3/acp-migration/, https://kiro.dev/docs/permissions/, https://kiro.dev/docs/sandbox/
+- sandbox-runtime — https://github.com/anthropics/sandbox-runtime
+- GitHub — https://docs.github.com/en/rest/activity/notifications, https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api, https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps, https://cli.github.com/manual/gh_auth_token
+- Linters — https://eslint.org/docs/latest/use/configure/configuration-files, https://doc.rust-lang.org/cargo/reference/config.html, https://docs.astral.sh/ruff/configuration/, https://golangci-lint.run/docs/plugins/go-plugins/
+- Tauri — https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-cli/src/build.rs
+
+## Landscape sources
 
 - GitHub Copilot app docs — https://docs.github.com/en/copilot/concepts/copilot-surfaces/github-copilot-app
 - VS Code agent harnesses — https://code.visualstudio.com/docs/agents/run/agent-harnesses

@@ -1,69 +1,80 @@
-# GAIT — Open Questions
+# Docent — Open Questions and Decision Log
 
-Each item has my recommendation. Nothing here is built until you answer. Answers will be folded back into `PLAN.md` and the question marked resolved.
+The design was stress-tested in November 2026. `PLAN.md` holds the result. This file records what's still unknown and how each earlier question was resolved.
 
-## Stack and UI
+## Still open
 
-**Q1. UI component library?** ✅ Resolved: shadcn-vue
-- **shadcn-vue (Recommended)**: Tailwind-native, components copied into the repo so they're fully editable, built on Reka UI (accessible primitives).
-- PrimeVue: huge ready-made set (data tables, trees). Tailwind support via "unstyled" mode, but more opinionated.
-- Nuxt UI: polished, but Nuxt-flavored. Works in plain Vue, with less community usage outside Nuxt.
+### To answer in M0.5 (on the work laptop)
 
-**Q2. Diff/code viewer?** ✅ Resolved: prototype Monaco and CodeMirror 6 in M0, decide then
-- **Monaco (Recommended)**: the VS Code editor. Best diff UX, gutter decorations, hover, many languages. Heavier (~several MB) and needs a check on Linux WebKitGTK.
-- CodeMirror 6 + `@codemirror/merge`: lighter, very customizable, slightly more assembly required.
-- `@git-diff-view/vue`: GitHub-style diff component. Quick to start, but less suited to Explore mode (full files).
+These need a real test, not a decision.
 
-## Agents
+1. Is `kiro-cli acp` allowed as a subprocess of another app, or is a waiver needed?
+2. Does Explain give useful answers on real work code?
+3. Does Kiro's workspace trust apply under ACP? Test with a malicious `.kiro/` folder. The docs don't say.
+4. Can a restricted Kiro custom agent still reach the Jira MCP read tools?
+5. Does a session-injected MCP server work under a restricted Kiro profile? For information only.
+6. Does `gh auth token` work with SSO for every API call Docent needs, including REST `/notifications`?
+7. Does Kiro report usage through `usage_update`, or only `_meta.kiro` metering?
 
-**Q3. When should review lenses (Bugs/Style/Modernize) run?** ✅ Resolved: auto-run when a PR is opened at a new head SHA, on-demand above a size threshold
-- **Automatically when a PR's new head SHA is first opened in GAIT (Recommended)**, with a size threshold above which they become on-demand.
-- Automatically on every new head SHA in the background, even before you open the PR (fastest, most cost).
-- Only on demand (cheapest).
+### To test before relying on Claude Code
 
-**Q4. Should agents be allowed to run commands (linters, type checkers, tests)?** ✅ Resolved: agents read-only; GAIT runs linters itself
-- **GAIT detects and runs the repo's linters itself, then feeds the output to the Modernize lens; agents themselves stay read-only (Recommended).** Predictable and safe.
-- Allow agents to run commands from an allowlist you edit per repo.
-- Fully read-only: no linters at all.
+8. Does the combined lockdown work (`settingSources: []`, `tools`, `strictMcpConfig`, `disableAllHooks`)? Each option was found in source or docs, but the combination is untested, and dropping user settings may drop auth config.
 
-**Q5. Should findings stay private until you promote them to a comment?**
-- **Yes (Recommended)**: nothing reaches GitHub/GitLab without you clicking.
-- Optional "auto-post findings above severity X" per repo.
+### To decide later
 
-**Q6. In Explore mode, what can you do with findings?**
-- Private notes (stored locally)
-- Copy as markdown
-- Create a GitHub/GitLab issue pre-filled
-- Hand off to an agent to make a fix branch (would break the "never writes code" non-goal; suggest later)
+9. **OS sandbox** around the agent process: decide at M8, before public release. Windows is the weak spot.
+10. **Trademark search** on Docent: before M8.
+11. **Parked ideas**, to revisit after 0.1:
+    - E1: review checklist per PR
+    - E2: risk heatmap in the file tree
+    - E3: re-review on author reply
+    - E5: Docent as an MCP server
 
-**Q7. Customizable lenses?**
-- **Ship the 4 default lenses as editable markdown files, and allow per-repo overrides/additions in `.gait/lenses/` (Recommended).**
-- Fixed built-in lenses only for v1.
+## Resolved
 
-**Q8. Which agents should we test against in M0?**
-I assume **Kiro CLI** (work) and **Claude Code via `claude-agent-acp`** (home). Add Codex / Copilot / Gemini? Also: does your work allow running `kiro-cli acp` as a subprocess of another app (any policy concerns)?
+### Original questions
 
-## Forge and sync
+| # | Question | Decision |
+|---|---|---|
+| Q1 | UI component library | shadcn-vue |
+| Q2 | Diff/code viewer | Monaco vs CodeMirror 6, chosen by spike |
+| Q3 | When review lenses run | Auto on opening a new head SHA, narrowed by the auto-run rules in `PLAN.md` 5.5 |
+| Q4 | Agents running commands | Agents never run commands by policy; Docent runs linters in trusted repos only and never installs dependencies |
+| Q5 | Findings private until promoted | Yes, always. No auto-post in v1 |
+| Q6 | Explore findings | Save and copy in M6, Jira next, GitHub issues before public release. No fix branches |
+| Q7 | Custom lenses | Editable defaults in your config folder; repo overrides for trusted repos, from the default branch only |
+| Q8 | Agents to test | Kiro in M0.5; Claude Code at home. Assume Kiro over ACP is allowed, or a waiver is obtainable |
+| Q9 | GitHub auth | Token from `gh`, PAT fallback, device flow at M8 |
+| Q10 | Polling and notifications | Conditional REST `/notifications`, GraphQL on change, tray-resident. Added CI failed and PR approved/changes requested |
+| Q11 | Packaging and signing | Unsigned early builds, paid signing at M8 |
+| Q12 | Name and identifiers | Docent, `com.thenorthnate.docent` |
+| E4 | Self-review | In M6 |
+| E6 | Token/cost display | Where the agent reports it |
 
-**Q9. GitHub auth**
-Device flow requires registering a **GAIT OAuth App** (free, under your GitHub account or a `gait` org). Fine to register it under your account for now? Do you use GitHub Enterprise Server or SSO-enforced orgs at work (affects token approval)?
+### Added during review
 
-**Q10. Polling interval and notifications**
-Default 60s with ETags. OS notifications for: new review requests, new commits on PRs you've reviewed, new comments mentioning you or replying to you. Anything to add or remove?
-
-## Project
-
-**Q11. Packaging and signing**
-macOS notarization needs an Apple Developer account ($99/yr); Windows signing needs a certificate (or Azure Trusted Signing). OK to ship unsigned early builds (documented workaround) and add signing at M8?
-
-**Q12. Name and identifiers**
-Bundle id `dev.gait.app`? Or something under your name (e.g. `com.thenorthnate.gait`)? Is there a domain?
-
-## Extra ideas (opt-in)
-
-- **E1. Review checklist per PR**: an auto-generated "things to verify" list (tests added? migrations? docs?) from the PR and the lens findings.
-- **E2. Risk heatmap in file tree**: order files by risk (findings + churn + ownership) so you review the important ones first.
-- **E3. Re-review on author reply**: when the author pushes a fix for a comment you left, auto-run the relevant lens on just that thread's lines and show "looks addressed / not addressed".
-- **E4. Self-review mode**: run all lenses on your own branch before opening a PR.
-- **E5. MCP server**: expose GAIT's context (PR, findings, review state) as an MCP server so your agent in other tools can use it.
-- **E6. Token/cost display**: show per-lens usage where the agent reports it.
+| Topic | Decision |
+|---|---|
+| First target | Work setup: Apple silicon Mac, GitHub Enterprise Cloud with SSO, Kiro, Jira |
+| Early proof | M0.5 on the work laptop gates M1 |
+| Agent coupling | `AgentBackend` interface, ACP as the only implementation for now |
+| Threat model | PR content is hostile until trusted |
+| Trust | Two states; `?` offers repo or branch trust; fork PRs per PR, reset on push; revocable |
+| Read-only claim | Replaced with "best-effort read-only" |
+| MCP tools | Denied unless allowlisted per profile; lens sessions get Jira read tools only |
+| Jira | Keys from commits, titles and branches; lookups and writes through the agent's MCP server; writes in an approved, single-purpose session |
+| "Reviewed" | Submitting a review or clicking Mark reviewed, never opening |
+| MVP scope | Since-last-review moved into the MVP; poller and notifications stay in M5 |
+| Repos | Watched repos only; Bind or full Clone; diffs always from local git |
+| Worktrees | `refs/docent/*`, detached HEAD, removed on close, disk cap |
+| Explain | Hover `?` only; per hunk or symbol; one at a time per PR |
+| Finding continuity | Fingerprints, interdiff re-runs, wider cache key, line validation |
+| Auto-run limits | Open, non-draft, review requested or pinned; 1,500 lines or 50 files |
+| Why context | Docent looks up blamed PRs and puts them in the prompt; JSON output; no MCP server in the MVP |
+| Trace | Agent-generated, validated steps, M6 |
+| Bookmarks | Re-located by snippet, M6 |
+| Projects | Multi-repo Explore in M6b; side-by-side worktrees; cross-repo steps marked inferred |
+| Milestone order | M5, M6, M6b, Jira, M8, then GitLab in 0.2 |
+| Early platforms | macOS arm64 plus a Linux `cargo check`; full matrix at M8 |
+| Agent profiles | Per forge account with repo overrides; no global fallback |
+| Transcripts | 30 days, configurable; findings kept; Clear all button |
