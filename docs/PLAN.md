@@ -1,4 +1,4 @@
-# Docent — Project Plan (Draft 2)
+# Docent — Project Plan (Draft 3)
 
 > **Docent**: a guide who explains what you're looking at. A desktop app for AI-guided code review **and** code exploration, which drives whatever coding agent you already use.
 
@@ -13,15 +13,17 @@
 1. Review GitHub PRs from a desktop app without opening the browser (GitLab follows in 0.2).
 2. Know immediately what changed since **you** last reviewed a PR: new commits, comments, review state.
 3. Click the `?` on any line and get an explanation of *why* it is there and what it relates to, grounded in the **whole repository** (local clone), not just the diff.
-4. Have a small team of agents (explain, bugs, style consistency, modernization/lint) do the legwork automatically in repos you trust.
+4. Have a small team of agents (explain, bugs, style consistency, modernization/lint) do the legwork automatically in repos you trust. Add your own lenses, remove or pause the ones you don't want, and steer them with rules learned from your own review comments.
 5. Write comments and submit reviews from the app.
 6. Explore any branch or commit with the same line-level experience, even with no PR.
 7. Trace a call path or data flow in one view, including across related repos (for example a service and its infrastructure repo).
 8. **Agent-agnostic**: Kiro at work, Claude Code at home, Codex/Copilot/Gemini/anything ACP-capable.
+9. Show moved code as **moved**, within and across files, not as a deletion plus an addition.
+10. In repos you opt in, let agents **verify** their findings: build, run tests and linters, and write and run their own tests.
 
 ### Non-goals (v1)
 
-- Not a code editor or IDE. Docent never edits your working tree. (Suggested fixes become review comments or suggestions.)
+- Not a code editor or IDE. Docent never edits your working tree. (Suggested fixes become review comments or suggestions.) Agent-written tests live only in a Docent-owned verify worktree and are reset before each run.
 - No hosted backend or Docent server. Everything runs locally; Docent talks only to your forge, locally spawned agents, and GitHub Releases for updates.
 - No model API keys inside Docent. Billing and auth stay with each agent.
 - No Jira credentials inside Docent. Jira access goes through the agent's own MCP server.
@@ -42,8 +44,12 @@
 | Local repos | Your existing clones, or a normal full clone made by Docent; one git worktree per PR |
 | Inbox scope | Watched repos only |
 | Hostile content | PR content is hostile until you trust the repo, branch or PR |
-| Agent permissions | Best-effort read-only, with an explicit MCP tool allowlist per profile |
+| Agent permissions | Best-effort read-only, with an explicit MCP tool allowlist per profile. Per profile: **Docent-managed** (default) or **Inherit harness settings** (user level only) |
 | Agent profiles | Per forge account with per-repo overrides; no global fallback |
+| Lenses | Global library plus per-repo lens sets; custom lenses; defaults can be deleted (tombstoned); toggles per repo, per PR and global pause |
+| Steering | Rules drawn from your submitted comments, **staged** for your approval, per repo or global |
+| Verification | Opt-in per trusted repo; separate verify worktree; allowlisted commands; never installs toolchains; never on fork PRs |
+| Moved code | Detected in `docent-git`, within and across files |
 | Auto-run | Trusted, open, non-draft PRs that request your review or that you pinned, up to a size limit |
 | Findings | Private. No auto-post in v1 |
 | Audience | Open source (MIT), no telemetry by default |
@@ -132,7 +138,10 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 - **Worktree**: a git worktree Docent creates under its own data dir, in detached HEAD at the PR's head SHA. Agents run with `cwd` set to it, so they see the full repo at the reviewed commit. Your working tree is untouched, though your clone's `.git` gains `refs/docent/*` refs and worktree metadata.
 - **Trust**: your local decision that a repo, branch or PR may be given to agents and linters (see 5.6).
 - **Agent profile**: how to launch an ACP agent (command, args, env), plus its MCP tool allowlist. Assigned per forge account, with optional per-repo overrides. If nothing matches, no agent runs and Docent asks you to choose.
-- **Lens**: a reusable review job: a prompt template, an expected output schema, and when it runs. Lenses are markdown files with frontmatter.
+- **Lens**: a reusable review job: a prompt template, an expected output schema, and when it runs. Lenses are markdown files with frontmatter. They come from the **global library** (defaults and your own) or are **repo-only** (see 5.12).
+- **Lens set**: which lenses are on for a repo, with per-PR overrides.
+- **Steering rule**: a short, general instruction attached to one lens (or to **General**, which applies to all review lenses), usually drawn from one of your review comments (see 5.13).
+- **Verify worktree**: a second, disposable Docent-owned worktree per PR where agents may build, test and write files (see 5.15).
 - **Finding**: structured lens output pinned to `repo:file:line(s)` with severity, category, rationale, optional suggested replacement, and evidence. Private until you promote it to a comment.
 - **Review state**: per-PR record of the last head SHA you reviewed, which files you marked viewed, and which comments/events you've seen.
 - **Project**: a named set of bound repos, each at its own ref, explored together (see 5.9).
@@ -184,8 +193,10 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 ```
 
 - Overview tab: description, checks, timeline, and an AI summary from the explainer lens.
-- Diff modes: unified or split, full PR or since-last-review, ignore-whitespace.
+- Diff modes: unified or split, full PR or since-last-review, ignore-whitespace. Moved code shows as moved (see 5.14).
 - Show/hide findings by lens and severity.
+- Your pending comments have their own gutter marker, and the file tree counts them beside agent findings.
+- Lens chips in the agent panel can be switched on or off for this PR (with "apply to repo"), and show their steering count (`Style · 4 rules`).
 - You can click and move the cursor anywhere freely. Agents are only triggered by the `?`.
 
 ### 5.5 Agents ("lenses") (M2–M3)
@@ -199,6 +210,9 @@ All lenses run through agent sessions with `cwd` set to the PR's worktree, so th
 | **Style** | Auto-run rules | Diff + repo conventions (`CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, `.editorconfig`) | JSON findings citing the in-repo example |
 | **Modernize & lint** | Auto-run rules | Diff + detected language/framework versions + linter output, when available | JSON findings: newer idioms, deprecated APIs, linter violations, each with a suggested replacement |
 | **Chat** | Manual | Current focus + prior panel content | Free-form follow-up in the same session |
+| **Custom** | Auto-run rules or on demand (set per lens) | Diff + PR context, optional file globs | JSON findings (fixed Finding schema, own categories allowed) |
+
+Each review lens also receives its steering rules and the General rules (see 5.13). Moved, unchanged lines are left out of lens prompts (see 5.14).
 
 **Explain behaviour**: a `?` appears at the far right of the hovered line, and clicking it triggers Explain. Explain runs per **hunk or enclosing symbol**, and line-specific questions are answered from that cached result. One Explain runs at a time per PR, and clicking elsewhere cancels the older request.
 
@@ -220,9 +234,9 @@ Otherwise lenses are on demand. Each lens uses one session per PR on the whole d
 
 **Structured output**: each lens prompt ends with a required JSON block (schema in the lens frontmatter). Docent validates it, retries once with the validation error, and otherwise shows the raw markdown. Every agent-reported line is checked against the real file, and a finding that fails is marked **unanchored**.
 
-**Caching and cost control**: results are cached in SQLite keyed by `(lens, lens_hash, profile, repo, head_sha, base_sha, scope)`, so editing a lens or switching agents invalidates old results. There's a concurrency limit per profile, a cancel button (`session/cancel`), and a per-PR "run agents" toggle.
+**Caching and cost control**: results are cached in SQLite keyed by `(lens, lens_hash, profile, repo, head_sha, base_sha, scope)`, so editing a lens or switching agents invalidates old results. `lens_hash` includes the lens's steering rules, but a steering change never re-runs existing results: it applies at the next new head SHA or on-demand run, and the PR view shows "steering changed since this run · Re-run". There's a concurrency limit per profile, a cancel button (`session/cancel`), and a per-PR "run agents" toggle.
 
-**Customizing lenses**: the four defaults ship as editable files in your config folder. Trusted repos can add overrides in `.docent/lenses/`, read from the **default branch only**, never from a PR head.
+**Customizing lenses**: see 5.12.
 
 **Usage display**: per-lens usage is shown where the agent reports it (ACP `usage_update`).
 
@@ -235,6 +249,8 @@ Otherwise lenses are on demand. Each lens uses one session per PR on the whole d
 - **Untrusted** (default): code and diffs only. No agents, linters or repo config.
 - **Trusted**: everything runs under the rules in this plan.
 
+On top of trust, a repo can be marked **allow verification** (a separate checkbox in Trust settings), which lets agents run the PR's code (see 5.15). Fork PRs never get verification in v1.
+
 **Granting trust**: clicking `?` in an untrusted repo opens a dialog with two choices, and Docent remembers the answer:
 
 - **Trust repo and all future branches**: covers all branches and future commits. Later PRs and branches auto-run under the rules in 5.5.
@@ -245,12 +261,19 @@ Fork PRs always need **Trust this PR**, even in a trusted repo, and that resets 
 **What trust means**: ACP permission requests are optional for agents, and not advertising `fs/write_text_file` doesn't stop an agent's built-in tools. So read-only is **best-effort**, not guaranteed, and the Trust dialog says so plainly. Controls:
 
 - **Kiro**: a restricted custom agent with a tool allowlist.
-- **Claude Code**: `settingSources: []`, a restricted `tools` list, `strictMcpConfig`, `disableAllHooks`, and an explicit `session/set_mode`.
+- **Claude Code**: `settingSources: []` (or `["user"]` in Inherit mode, never `"project"`), a restricted `tools` list, `strictMcpConfig`, `disableAllHooks`, and an explicit `session/set_mode`.
 - **All agents**: forge tokens stripped from the environment at spawn; Docent denies any permission request outside the policy.
 - **MCP tools**: denied unless on the profile's allowlist, including any new tools a server adds later. Lens sessions get Jira **read** tools only (get, search), so injected content can't write to Jira.
 - A full OS sandbox around the agent process is decided at M8, before public release.
 
-**Linters**: Docent detects and runs linters on changed files, in trusted repos only, and never installs dependencies. A linter that can't run shows "skipped: dependencies missing", and Modernize continues without it.
+**Permission modes** (per agent profile):
+
+- **Docent-managed** (default): Docent turns its capability toggles into agent-specific config (a Kiro agent tool allowlist, Claude `allowedTools`) and answers ACP permission requests against them. Toggles: file writes (verify worktree only), shell commands (the repo's verify allowlist, see 5.15), web search, web fetch. Web search and fetch are **off** by default, because prompt injection plus web access is a way to send code out.
+- **Inherit harness settings**: Docent uses your **user-level** agent settings, never the repo's, and only denies requests that fall outside the verify worktree. The UI warns that anything your harness auto-allows never reaches Docent, so Docent can't limit it.
+
+ACP gives Docent no way to read an agent's settings; Inherit mode works by not overriding them.
+
+**Linters**: Docent detects and runs linters on changed files, in trusted repos only, using the same per-repo command list as verification (5.15). Without verification allowed, linters never install dependencies. A linter that can't run shows "skipped: dependencies missing", and Modernize continues without it.
 
 **Transparency and retention**: every transcript (prompts, tool calls, permission decisions) is viewable in an "Agent activity" drawer. Transcripts are kept for 30 days (configurable) or until their worktree is removed. Findings are kept. Settings has a **Clear all** button.
 
@@ -262,7 +285,7 @@ Fork PRs always need **Trust this PR**, even in a trusted repo, and that resets 
 
 ### 5.8 Commenting and submitting reviews (M4)
 
-- Click the gutter or select lines → comment box (markdown, preview, GitHub `suggestion` blocks).
+- Click the gutter or select lines → comment box (markdown, preview, GitHub `suggestion` blocks). Comments you write yourself can become steering suggestions after you submit (see 5.13).
 - **Promote a finding** to a comment in one click. Docent pre-fills the text and you edit it before posting.
 - Comments collect into a **pending review**, then go out together with **Comment / Approve / Request changes**.
 - Reply to, resolve and unresolve existing threads. Single comments can also post immediately.
@@ -303,6 +326,72 @@ Built from the start so this doesn't need a rework: `AgentBackend` takes multipl
 - Implement `Forge` for GitLab: MR inbox, MR diffs and versions, discussions, draft notes, approvals.
 - Self-managed GitLab via base URL. Personal access token first, OAuth (PKCE) later.
 
+### 5.12 Lens management (M3)
+
+**Layers:**
+
+- **Global library**, in Docent's config folder: the defaults plus any lenses you want everywhere.
+- **Per-repo lens set**: picks which library lenses are on and can add **repo-only** lenses, also stored locally.
+- **`.docent/lenses/`** in a trusted repo (default branch only, never a PR head): optional, for sharing with a team. Shown as "from repo" and switchable like any other.
+- A **Project** uses the union of its repos' lens sets.
+- A repo lens with the same `id` as a global one **replaces** it, and the agent panel marks it "repo version". Lenses with different ids both show, even if they look alike; switch one off per PR or per repo.
+
+**Defaults:**
+
+- Editing a default makes it your copy, and Docent stops updating it. Settings shows "a newer default is available" with a diff.
+- Deleting a default **tombstones** it, so updates can't bring it back unannounced. **Restore defaults** undoes this.
+- **Explain** and **Chat** can be edited but not deleted or disabled. The automatic **PR summary** has its own on/off switch.
+
+**Enable and disable:**
+
+- Toggles per repo, per PR (from the agent panel, with "apply to repo"), and a global **pause this lens everywhere**.
+- A disabled lens starts no new runs. Its cached findings are hidden but kept, and come back when you turn it on.
+- A disabled lens has a one-click **Run anyway** on a PR.
+
+**Custom lenses** use the fixed Finding schema so the gutter, counts, fingerprints and promote-to-comment work. A lens defines name, prompt, trigger (auto or on demand), optional file globs, default severity, and may add its own `category` values. A free-form report lens is a possible later addition.
+
+### 5.13 Steering (M4)
+
+**Staging:**
+
+- After you submit a review in a trusted repo, one short background session reads the **new review comments you wrote yourself**. Replies to existing threads and unedited promoted findings don't count; comments deleted before submitting never count.
+- Only comments that generalize into a rule become candidates (most will be style). One-off comments produce nothing.
+- Each candidate is assigned to the closest lens, or to **General** (all review lenses), and compared with existing rules. A near-duplicate is offered as **merge with existing rule X**, with the merged wording.
+- Candidates go to a **Steering suggestions** list (a badge in the top bar), never a pop-up. Each stays until you **accept**, **edit**, **reassign**, choose **repo** or **global** scope, or **dismiss**. Nothing applies without your approval.
+
+**Scope**: accepted rules are per repo by default. **Promote to global** moves a rule into the global library, applying it wherever that lens is on, including Explore and self-review.
+
+**Visibility:**
+
+- Lens chips in the agent panel show a rule count. Clicking one lists the rules to edit, reassign or delete.
+- Repo Settings → **Lenses & steering** lists every lens with its rules, marked "from comment on #123", "global" or "repo", plus a rough token cost per lens.
+- A finding that a rule triggered cites it ("per your rule: prefer `errors.Is`") through an optional `steering_rule_id` field.
+
+**Cost**: rules are part of `lens_hash`, but changing them never re-runs existing results (see 5.5).
+
+### 5.14 Moved code (M4)
+
+- `docent-git` detects moved blocks itself (git-style block matching, as in `--color-moved`), **within and across files**, independent of the viewer.
+- The diff shows a moved block as **moved from `file:line`** (click to jump) or **moved with changes**, with the small inner diff.
+- Moved, unchanged lines are left out of lens prompts to save tokens.
+- The M0 spike confirms the chosen viewer can render this. Monaco's experimental `showMoves` appears to cover single files only.
+
+### 5.15 Verification (M4b)
+
+**When**: on demand, through a **Verify** button on the PR or a "use verification" checkbox per lens run. A per-repo setting adds it to auto-runs. Verification is a capability any lens can use (Bugs especially), not a lens.
+
+**Requirements**: the repo is trusted, **allow verification** is on, and the PR is not from a fork.
+
+**Verify worktree**: a second Docent-owned worktree per PR, at the head SHA, reset with `git reset --hard && git clean -fdx` before each run. The review worktree stays clean, so line anchors and diffs stay valid. Tests the agent writes appear as findings with the test code attached, which you can promote to a comment.
+
+**Commands:**
+
+- Docent detects default commands per repo and you edit them in repo settings: for example `go build ./...`, `go test ./...`, `golangci-lint run` from `go.mod`; `cargo build`, `cargo test`, `cargo clippy` from `Cargo.toml`; scripts from `package.json`.
+- The agent may run only commands that start with an allowed prefix, so `go test ./pkg/foo -run TestNewCase` works for a test it wrote. This list is the shell allowlist in Docent-managed mode, and the linter runner uses it too.
+- Commands may pull dependencies (`go build`, `cargo build`) into your normal toolchain caches (`~/go/pkg/mod`, `~/.cargo`). Docent **never installs toolchains**: a missing tool shows "skipped: `go` not found".
+
+**Limits**: 10 minutes per command, one verify run per repo at a time, cancellable. Forge tokens are still removed from the environment. Command output goes into the Agent activity drawer.
+
 ---
 
 ## 6. Data model (SQLite, initial)
@@ -314,12 +403,23 @@ trust(id, repo_id, scope, ref NULL, pr_id NULL, head_sha NULL, granted_at)   -- 
 pull_requests(id, repo_id, number, title, author, state, is_draft, is_fork, head_sha, base_sha, updated_at, raw_json)
 review_state(pr_id, last_reviewed_sha, last_seen_event_at, viewed_files_json)
 events(id, pr_id, kind, actor, created_at, seen BOOL)          -- commits, comments, reviews, CI
-agent_profiles(id, name, command, args_json, env_json, mcp_allowlist_json)
+agent_profiles(id, name, command, args_json, env_json, mcp_allowlist_json,
+               permission_mode, allow_writes BOOL, allow_shell BOOL, allow_web_search BOOL, allow_web_fetch BOOL)
+                                                                -- permission_mode: docent | inherit
 account_profiles(account_id, profile_id)
+lenses(id, lens_key, source, repo_id NULL, path, tombstoned BOOL, edited_from_default_hash NULL)
+                                                                -- source: default | global | repo_local | repo_committed
+lens_settings(id, lens_key, scope, repo_id NULL, pr_id NULL, enabled BOOL)   -- scope: global | repo | pr
+steering_rules(id, lens_key NULL, scope, repo_id NULL, body_md, source_comment_url NULL, created_at)
+                                                                -- lens_key NULL = General; scope: global | repo
+steering_candidates(id, repo_id, pr_id, source_comment_url, lens_key NULL, body_md, merge_with_rule_id NULL,
+                    status, created_at)                         -- status: staged | accepted | dismissed
+verify_settings(repo_id, allowed BOOL, auto_run BOOL)
+verify_commands(id, repo_id, command_prefix, detected BOOL)
 lens_runs(id, lens, lens_hash, profile_id, pr_id NULL, project_id NULL, repo_id, head_sha, base_sha, scope, status,
           started_at, finished_at, transcript_path, transcript_expires_at)
 findings(id, lens_run_id, repo_id, fingerprint, file, line_start, line_end, anchored BOOL, severity, category,
-         title, body_md, suggestion, dismissed BOOL, saved BOOL)
+         title, body_md, suggestion, steering_rule_id NULL, test_code NULL, dismissed BOOL, saved BOOL)
 pending_comments(id, pr_id, file, line, side, body_md, from_finding_id NULL)
 bookmarks(id, repo_id, file, line, snippet, origin_sha, label)
 projects(id, name)
@@ -334,12 +434,13 @@ Each milestone is a set of short-lived branches off `main`.
 
 | # | Milestone | Outcome |
 |---|---|---|
-| **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, and MCP injection (for information only). |
-| **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, plus a one-off WebKitGTK load test. Pick one. |
+| **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. |
+| **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. |
 | **M1** | GitHub inbox + read-only PR view | Auth, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle |
 | **M2** | Explain + trust + agent settings | Trust model, profiles and detection, tool policy, Explain, PR summary, Chat, activity drawer |
-| **M3** | Review lenses | Bugs, Style, Modernize & lint; findings in gutter and file tree; fingerprints; caching; lens files |
-| **M4** | Commenting, reviews, since-last-review | Pending review, promote finding, submit, threads, review state, interdiff/range-diff, new-comment highlighting |
+| **M3** | Review lenses | Bugs, Style, Modernize & lint; findings in gutter and file tree; fingerprints; caching; lens files; lens management (global library, repo lens sets, custom lenses, tombstones, toggles, Run anyway) |
+| **M4** | Commenting, reviews, since-last-review | Pending review, promote finding, submit, threads, review state, interdiff/range-diff, new-comment highlighting, moved-code detection, steering (staging, scope, UI, citations) |
+| **M4b** | Verification + permission modes | Docent-managed and Inherit modes, Trust + allow verification, verify worktree, command detection and allowlist, limits |
 | **M5** | Background tracking | Poller, tray, OS notifications, viewed-file sync |
 | **M6** | Explore | Any-ref worktrees, file browser, on-demand lenses, saved findings, self-review, Trace, bookmarks |
 | **M6b** | Projects | Multi-repo view and cross-repo Trace |
@@ -349,7 +450,7 @@ Each milestone is a set of short-lived branches off `main`.
 
 **M0.5 gate:** M1 can't start until the Explain answer is useful on real work code and you decide it's worth continuing. If Kiro is blocked, swap the `AgentBackend` implementation or get the waiver first. If Explain isn't useful without ticket text, fix the Jira path before M1.
 
-**MVP cut (personal use at work)**: M0.5–M4. **First public release**: through M8.
+**MVP cut (personal use at work)**: M0.5–M4b. **First public release**: through M8.
 
 **Early builds** are unsigned with the workaround documented. Tauri's updater has its own signing key, so auto-update doesn't need paid certificates.
 
@@ -359,7 +460,9 @@ Each milestone is a set of short-lived branches off `main`.
 
 - **Rust**: unit tests per crate. `docent-git` tests run against temp repos built in-test. `docent-forge` uses recorded HTTP fixtures (`wiremock`) and a fake `Forge`.
 - **Mock ACP agent**: a tiny test binary that speaks ACP and replays scripted responses (including permission requests and malformed JSON), so the lens pipeline is tested without real agents or cost.
-- **Hostile-repo fixtures**: repos with malicious `.kiro/`, `.claude/`, `.mcp.json`, `.docent/lenses/` and linter configs, proving nothing runs before trust.
+- **Hostile-repo fixtures**: repos with malicious `.kiro/`, `.claude/`, `.mcp.json`, `.docent/lenses/` and linter configs, proving nothing runs before trust, and no build or test runs without **allow verification** or on a fork PR.
+- **Moved-code fixtures**: `docent-git` tests for moves within a file, across files, and moved-with-changes.
+- **Mock agent** also scripts out-of-allowlist shell requests and write requests outside the verify worktree, which must be denied.
 - **Frontend**: Vitest + Vue Test Utils for components and stores. Playwright for a few smoke flows against the Vite dev build with mocked `invoke`.
 - **CI**: GitHub Actions on macOS arm64 (`cargo fmt/clippy/test`, `pnpm lint/test`, `tauri build`), plus a cheap Linux `cargo check`. The full OS matrix arrives at M8.
 
@@ -384,4 +487,7 @@ Each milestone is a set of short-lived branches off `main`.
 | GitHub rate limits from polling | Conditional `/notifications` polling, GraphQL only on change, backoff |
 | `/notifications` doesn't accept the `gh` token | Test in M0.5; fall back to a slower GraphQL poll |
 | Force-pushes break "since last review" | `git range-diff` fallback; old SHAs kept in `refs/docent/*` |
+| Verification runs hostile code from a PR | Separate opt-in on top of trust, never on fork PRs, allowlisted commands, verify worktree, stripped tokens, time limits, OS sandbox decision at M8 |
+| Inherit mode lets the harness auto-allow things Docent can't see | Off by default; plain warning in the UI; user-level settings only, never the repo's |
+| Steering rules pile up and cost tokens | Staged approval, merge suggestions, token cost per lens shown |
 | Name overlaps with `TransluceAI/docent`, and npm/PyPI names are taken | Accepted; no package needs those names. Trademark search before M8 |

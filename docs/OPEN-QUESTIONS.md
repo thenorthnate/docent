@@ -15,10 +15,15 @@ These need a real test, not a decision.
 5. Does a session-injected MCP server work under a restricted Kiro profile? For information only.
 6. Does `gh auth token` work with SSO for every API call Docent needs, including REST `/notifications`?
 7. Does Kiro report usage through `usage_update`, or only `_meta.kiro` metering?
+7a. Can a restricted Kiro custom agent run one allowlisted shell command (for verification), while other commands are refused?
 
 ### To test before relying on Claude Code
 
-8. Does the combined lockdown work (`settingSources: []`, `tools`, `strictMcpConfig`, `disableAllHooks`)? Each option was found in source or docs, but the combination is untested, and dropping user settings may drop auth config.
+8. Does the combined lockdown work (`settingSources: []`, `tools`, `strictMcpConfig`, `disableAllHooks`)? Each option was found in source or docs, but the combination is untested, and dropping user settings may drop auth config. Also test `settingSources: ["user"]` (Inherit mode), which keeps user settings and may fix the auth question.
+
+### To confirm in the M0 spike
+
+8a. Can the chosen viewer render moved blocks across files? Monaco's experimental `showMoves` appears to work only within one file.
 
 ### To decide later
 
@@ -29,6 +34,8 @@ These need a real test, not a decision.
     - E2: risk heatmap in the file tree
     - E3: re-review on author reply
     - E5: Docent as an MCP server
+    - E7: pre-submit agent check of manual comments (one run before sending, suggesting removals or rewrites). Parked: 5.8's "draft with agent" covers it for now
+    - E8: free-form "report" lenses with no line anchors
 
 ## Resolved
 
@@ -39,10 +46,10 @@ These need a real test, not a decision.
 | Q1 | UI component library | shadcn-vue |
 | Q2 | Diff/code viewer | Monaco vs CodeMirror 6, chosen by spike |
 | Q3 | When review lenses run | Auto on opening a new head SHA, narrowed by the auto-run rules in `PLAN.md` 5.5 |
-| Q4 | Agents running commands | Agents never run commands by policy; Docent runs linters in trusted repos only and never installs dependencies |
+| Q4 | Agents running commands | ~~Agents never run commands by policy~~ **Superseded** by verification (see below): allowlisted commands in a verify worktree, in repos with Trust + allow verification. Docent never installs toolchains |
 | Q5 | Findings private until promoted | Yes, always. No auto-post in v1 |
 | Q6 | Explore findings | Save and copy in M6, Jira next, GitHub issues before public release. No fix branches |
-| Q7 | Custom lenses | Editable defaults in your config folder; repo overrides for trusted repos, from the default branch only |
+| Q7 | Custom lenses | Editable defaults in your config folder; repo overrides for trusted repos, from the default branch only. Extended by lens management (see below) |
 | Q8 | Agents to test | Kiro in M0.5; Claude Code at home. Assume Kiro over ACP is allowed, or a waiver is obtainable |
 | Q9 | GitHub auth | Token from `gh`, PAT fallback, device flow at M8 |
 | Q10 | Polling and notifications | Conditional REST `/notifications`, GraphQL on change, tray-resident. Added CI failed and PR approved/changes requested |
@@ -78,3 +85,30 @@ These need a real test, not a decision.
 | Early platforms | macOS arm64 plus a Linux `cargo check`; full matrix at M8 |
 | Agent profiles | Per forge account with repo overrides; no global fallback |
 | Transcripts | 30 days, configurable; findings kept; Clear all button |
+
+### Added in the second review (lenses, steering, verification)
+
+| Topic | Decision |
+|---|---|
+| Lens scope | Global library plus per-repo lens sets with repo-only lenses; a Project uses the union of its repos' sets |
+| Lens storage | Local in Docent's config folder; `.docent/lenses/` stays optional for team sharing |
+| Same-id lenses | A repo lens replaces the global one with the same `id`; different ids both show |
+| Deleting defaults | Tombstoned, with Restore defaults; an edited default is your copy and stops updating |
+| Explain and Chat | Editable, not deletable or disableable; PR summary has its own switch |
+| Lens toggles | Per repo, per PR (with "apply to repo"), and global pause; hidden findings kept; one-click Run anyway |
+| Custom lens schema | Fixed Finding schema, own categories allowed |
+| Manual comments | Covered by 5.8; own gutter marker and file-tree counts |
+| Pre-submit check | Dropped for now (parked as E7) |
+| Steering source | Extracted after you submit, from new comments you wrote yourself; only rules that generalize |
+| Steering approval | Staged as suggestions; nothing applies without your approval |
+| Steering scope | Per repo by default; promote to global |
+| Steering visibility | Lens chip counts, Repo Settings → Lenses & steering, rule citations on findings |
+| Steering and cache | Part of `lens_hash`; never re-runs existing results, shows "Re-run" |
+| Duplicate steering | Merge with existing rule offered; token cost per lens shown |
+| Moved code | Detected in `docent-git` within and across files; left out of lens prompts; M4 |
+| Verification | Separate verify worktree, reset each run; agent-written tests become findings |
+| Verification trust | Trust + per-repo allow verification; never on fork PRs |
+| Verification commands | Detected per repo, editable, prefix allowlist shared with linters; dependencies may be pulled, toolchains never installed |
+| Verification runs | On demand by default, optional auto-run per repo; 10 min per command, one run per repo |
+| Permission modes | Per profile: Docent-managed (default; web search and fetch off) or Inherit harness settings (user level only) |
+| Milestones | Lens management in M3; moved code and steering in M4; verification and permission modes in new M4b; MVP is M0.5–M4b |
