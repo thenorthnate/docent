@@ -1,0 +1,17 @@
+{
+  "name": "docent-restricted",
+  "description": "Docent M0.5 spike: read-only reviewer with Jira read tools and one allowlisted shell command",
+  "prompt": "You are a read-only code reviewer. Never modify files. Never run commands other than those you are allowed.",
+  "tools": ["read", "grep", "glob", "shell", "@JIRA_SERVER"],
+  "allowedTools": ["read", "grep", "glob", "@JIRA_SERVER/JIRA_GET_TOOL", "@JIRA_SERVER/JIRA_SEARCH_TOOL"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": ["git status"],
+      "autoAllowReadonly": false
+    }
+  },
+  "includeMcpJson": true,
+  "mcpServers": {},
+  "resources": [],
+  "hooks": {}
+}

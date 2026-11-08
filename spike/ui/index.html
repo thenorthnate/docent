@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Docent spike (M0.5)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>Docent spike — M0.5 work-laptop proof <span class="muted">(throwaway, see spike/README.md)</span></header>
+  <main>
+    <section id="left">
+      <h2>1 · Forge</h2>
+      <div class="grid">
+        <label>Host <input id="host" value="github.com" /></label>
+        <label>Owner <input id="owner" /></label>
+        <label>Repo <input id="repo" /></label>
+        <label>Local clone path <input id="clonePath" placeholder="/Users/you/src/repo" /></label>
+      </div>
+      <div class="row">
+        <button id="connect">Connect via gh</button>
+        <button id="probe">Run API probes</button>
+        <button id="listPrs">List open PRs</button>
+      </div>
+      <div id="forgeStatus" class="status"></div>
+      <table id="probeTable"></table>
+      <ul id="prList"></ul>
+      <div class="row">
+        <button id="reviewTest" disabled>Pending-review round trip on selected PR</button>
+      </div>
+
+      <h2>2 · Worktree &amp; diff</h2>
+      <div class="row"><button id="checkout" disabled>Check out selected PR</button></div>
+      <div id="checkoutStatus" class="status"></div>
+      <div id="diff"></div>
+    </section>
+
+    <section id="right">
+      <h2>3 · Agent (ACP)</h2>
+      <div class="grid">
+        <label>Command <input id="agentCmd" value="kiro-cli" /></label>
+        <label>Args (one per line) <textarea id="agentArgs" rows="2">acp</textarea></label>
+        <label>Env (KEY=value per line) <textarea id="agentEnv" rows="2" placeholder="KIRO_HOME=/path/to/restricted-home"></textarea></label>
+        <label>cwd <input id="agentCwd" placeholder="worktree path (filled on checkout)" /></label>
+        <label>Mode id (optional) <input id="agentMode" /></label>
+        <label>Shell allowlist (exact commands, one per line) <textarea id="agentAllow" rows="2"></textarea></label>
+        <label>mcpServers JSON (session-injected, Q5) <textarea id="agentMcp" rows="2">[]</textarea></label>
+      </div>
+      <div class="row">
+        <label class="inline"><input type="checkbox" id="useJira" checked /> Ask agent to use Jira tools</label>
+        <button id="buildPrompt" disabled>Build prompt from selected hunk</button>
+      </div>
+      <textarea id="prompt" rows="12" placeholder="Prompt (editable)"></textarea>
+      <div class="row">
+        <button id="runAgent">Run</button>
+        <button id="cancelAgent">Cancel</button>
+        <span id="agentStatus" class="status"></span>
+      </div>
+      <h3>Answer</h3>
+      <pre id="answer"></pre>
+      <h3>Usage / _meta</h3>
+      <pre id="usage"></pre>
+      <h3>Events (tools, permissions, notifications, stderr)</h3>
+      <pre id="events"></pre>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
