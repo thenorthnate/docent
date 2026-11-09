@@ -1,0 +1,53 @@
+:root {
+  --bg: #fafafa; --fg: #1f2328; --muted: #656d76; --border: #d0d7de; --panel: #f6f8fa;
+  --accent: #0969da; --move: #efe8fc; --move-strong: #d9c8f7; --move-bar: #8250df;
+  --high: #cf222e; --medium: #bf8700; --low: #57606a; --comment: #0969da;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body { display: flex; flex-direction: column; }
+#bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+#bar .ua { margin-left: auto; color: var(--muted); font-size: 11px; }
+main { flex: 1; display: grid; grid-template-columns: 260px 1fr 300px; min-height: 0; }
+#files, #side { overflow: auto; padding: 8px; border-right: 1px solid var(--border); background: var(--panel); }
+#side { border-right: 0; border-left: 1px solid var(--border); }
+h3 { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 10px 0 6px; }
+.file { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none; padding: 6px; border-radius: 6px; cursor: pointer; font: inherit; color: inherit; }
+.file small { display: block; color: var(--muted); }
+.file.active { background: #fff; border-color: var(--border); }
+.moves { padding-left: 16px; font-size: 11px; color: var(--muted); }
+#log { padding-left: 18px; font-size: 11px; max-height: 45vh; overflow: auto; }
+#metrics { font-size: 10.5px; white-space: pre; overflow-x: auto; }
+#viewer { min-width: 0; min-height: 0; position: relative; }
+.host { position: absolute; inset: 0; }
+
+/* CodeMirror sizing */
+.host > .cm-mergeView { height: 100%; overflow-y: auto; }
+.host > .cm-editor { height: 100%; }
+.cm-editor { font-family: Menlo, Monaco, monospace; }
+.cm-ann-gutter .cm-gutterElement { display: flex; align-items: center; gap: 2px; padding: 0 2px; }
+
+/* Gutter markers (shared) */
+.gm { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 5px 2px; }
+.mgm::after { content: ''; display: block; width: 9px; height: 9px; margin: 5px auto 0; border-radius: 50%; background: var(--c); }
+.mgm.gm-comment::after { border-radius: 2px; }
+.gm-finding.gm-high { --c: var(--high); }
+.gm-finding.gm-medium { --c: var(--medium); }
+.gm-finding.gm-low { --c: var(--low); }
+.gm-comment { --c: var(--comment); }
+.gm { background: var(--c); }
+.gm.gm-comment { border-radius: 2px; }
+
+/* Moves (shared) */
+.mv-zone { font: 12px -apple-system, sans-serif; color: var(--move-bar); background: var(--move); border-left: 3px solid var(--move-bar); padding: 1px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; height: 19px; line-height: 17px; }
+.mv-zone:hover { text-decoration: underline; }
+.mv-line, .mv-line-away { background: var(--move) !important; }
+.mv-line-changed { background: var(--move-strong) !important; }
+.mv-bar { background: var(--move-bar); width: 3px !important; margin-left: 3px; }
+.cm-line.mv-line, .cm-line.mv-line-away { box-shadow: inset 3px 0 var(--move-bar); }
+.flash-line { background: rgba(255, 213, 0, 0.45) !important; }
+
+/* Hover ? */
+.hover-q { position: fixed; display: none; z-index: 1000; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: #fff; color: var(--accent); font: bold 11px/1 -apple-system, sans-serif; cursor: pointer; }
+.hover-q:hover { background: var(--accent); color: #fff; }

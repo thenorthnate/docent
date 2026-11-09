@@ -1,0 +1,26 @@
+{
+  "name": "docent-viewer-spike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/merge": "6.12.3",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@tauri-apps/api": "2.12.4",
+    "codemirror": "6.0.2",
+    "monaco-editor": "0.57.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "typescript": "5.9.3",
+    "vite": "8.3.7"
+  }
+}
