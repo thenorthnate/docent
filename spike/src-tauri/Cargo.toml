@@ -1,0 +1,21 @@
+# Throwaway M0 viewer spike. Never merged to main.
+[package]
+name = "docent-viewer-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone: not part of any future Docent workspace.
+[workspace]
+
+[features]
+# Serve the built UI (ui/dist) instead of the Vite dev server.
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
