@@ -12,6 +12,7 @@ It mounts the same diffs in both viewers and checks the four things M0 asks abou
 | `ui/src/viewers/codemirror.ts` | `@codemirror/merge` (split and unified), fed git's hunks through `diffConfig.override`; custom gutter, block widgets for moves |
 | `ui/src/viewers/monaco-entry.ts` | Trimmed Monaco import (editor core and contributions, TypeScript highlighting only), so the bundle comparison is fair |
 | `ui/src/hover.ts` | The hover `?`, shared by both viewers |
+| `ui/src/moveHeader.ts` | The move header (collapse arrow + jump label), shared by both viewers |
 | `ui/src/moves.ts` | Moved-block detection standing in for `docent-git` (exact runs of 3+ lines across files, grown into "moved with changes") |
 | `ui/src/diff.ts` | Myers line diff standing in for `git diff -U0` on the browser fixtures |
 | `ui/src/fixtures.ts` | A 3-file PR with a within-file move, a cross-file move and a cross-file move with changes; generated 5k/20k/100k-line files |
@@ -34,20 +35,22 @@ cd spike/ui && npm install
 npm --prefix spike/ui run dev
 ```
 
-Open http://localhost:5173. Pick a viewer, mode and fixture. Hover a line for the `?`, click the purple move headers to jump, and watch the Events panel. `window.runBenchmark()` in the console runs the suite.
+Open http://localhost:5173. Pick a viewer, mode and fixture. Hover a line for the `?`, click a purple move header to jump to the other end, click its ▸/▾ arrow to collapse or expand the block, and watch the Events panel. `window.runBenchmark()` in the console runs the suite.
 
-**In Tauri on macOS** (WKWebView, the real target). With the dev server running:
+**In Tauri on macOS** (WKWebView, the real target). `cargo run` serves the built UI from `ui/dist`, so build it first:
 
 ```bash
-cd spike/src-tauri && cargo run
+npm --prefix spike/ui run build && cd spike/src-tauri && cargo run
 ```
+
+For live reload, start the dev server (above) and run `cargo run --no-default-features`, which loads http://localhost:5173 instead. Without the dev server running, that window is blank.
 
 The **Load git diff** box (Tauri only) loads `git diff -U0 <base> <head>` from any local repo.
 
 **Headless benchmark** (builds the UI, runs every case, writes `results/bench-<os>-<time>.json`, quits). Keep the window visible while it runs: a hidden window pauses `requestAnimationFrame`, and the scroll test is skipped.
 
 ```bash
-npm --prefix spike/ui run build && cd spike/src-tauri && cargo build --release --features custom-protocol && SPIKE_BENCH=1 ./target/release/docent-viewer-spike
+npm --prefix spike/ui run build && cd spike/src-tauri && cargo build --release && SPIKE_BENCH=1 ./target/release/docent-viewer-spike
 ```
 
 Add `SPIKE_GIT="/path/to/repo|<base>|<head>"` to include a real diff, which checks hunk agreement with git file by file.

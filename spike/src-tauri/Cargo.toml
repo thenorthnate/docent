@@ -9,7 +9,9 @@ publish = false
 [workspace]
 
 [features]
-# Serve the built UI (ui/dist) instead of the Vite dev server.
+# On by default: `cargo run` serves the built UI from ui/dist (run `npm run build` in ui/ first).
+# For live reload, start the Vite dev server and use `cargo run --no-default-features`.
+default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
