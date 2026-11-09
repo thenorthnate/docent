@@ -18,7 +18,7 @@ It mounts the same diffs in both viewers and checks the four things M0 asks abou
 | `ui/src/fixtures.ts` | A 3-file PR with a within-file move, a cross-file move and a cross-file move with changes; generated 5k/20k/100k-line files |
 | `ui/src/main.ts` | Shell: viewer/mode/fixture pickers, event log, metrics, benchmark runner |
 | `src-tauri/` | Tauri 2 shell: loads real `git diff -U0` hunks from a local repo, saves benchmark JSON, headless benchmark mode |
-| `results/` | Benchmark output from macOS WKWebView |
+| `results/` | Benchmark output: macOS WKWebView runs, and the Linux WebKitGTK CI run |
 | `../.github/workflows/spike-webkitgtk.yml` | Runs the same headless benchmark on Ubuntu (WebKitGTK 4.1, Xvfb) when this branch is pushed |
 
 ## Run it

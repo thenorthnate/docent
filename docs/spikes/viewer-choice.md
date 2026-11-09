@@ -6,7 +6,7 @@ _November 2026. Code on the `spike/viewer-choice` branch (never merged). Answers
 
 **CodeMirror 6** (`@codemirror/merge`). Both viewers can do everything M0 asked for. CodeMirror is the only one that shows **git's** diff instead of its own, and Docent's design depends on that: diffs come from local git, `docent-git` detects moves, and findings are anchored to git's lines. It is also lighter and faster on large files. Monaco's advantage is built-in polish (overview ruler, diff navigator, find widget), which Docent would rebuild in CodeMirror where it needs it.
 
-The WebKitGTK load test has not run yet (see below).
+The one-off WebKitGTK load test widens the gap further (see 8).
 
 ## What was tested
 
@@ -83,9 +83,18 @@ Size matters less in a desktop app, but parse time at start-up does.
 - **Monaco:** needs a web worker set up through Vite (`?worker`). Vite's dev-mode dependency optimiser broke the worker import from the package, so a one-line local shim was needed. Monaco 0.57's default entry pulls in every language and language service; trimming it means copying its contribution list. Disposing the editor inside its own mouse handler (a cross-file jump) left the next editor stuck, so the jump has to be deferred.
 - **CodeMirror:** every `@codemirror/*` package must resolve to one copy of `@codemirror/state` and `@codemirror/view`, so pin compatible versions. More chrome is Docent's to build: overview ruler, hunk navigation and search UI. `collapseUnchanged` exists.
 
-### 8. WebKitGTK (Linux) load test: not run yet
+### 8. WebKitGTK (Linux) load test
 
-It can't run on the Mac. `.github/workflows/spike-webkitgtk.yml` on the spike branch builds the app on Ubuntu 24.04 with WebKitGTK 4.1 and runs the same headless benchmark under Xvfb. The workflow runs when the branch is pushed, and its results become the `webkitgtk-results` artifact. Record them here before closing M0.
+Run once in CI (`.github/workflows/spike-webkitgtk.yml`): Ubuntu 24.04, WebKitGTK 4.1, Xvfb with software rendering on a 2-core GitHub runner. The results are in `spike/results/linux-webkitgtk-ci.json`. Both viewers load and work, and hunk agreement matches macOS exactly. Absolute numbers are pessimistic (no GPU), but the gap between the viewers is wide:
+
+| Lines | Viewer | Ready (split / unified) | Mean frame (split / unified) | Frames > 33 ms of 400 (split / unified) |
+|---|---|---|---|---|
+| 5,014 | CodeMirror | 92 / 44 ms | 24 / 18 ms | 50 / 0 |
+| 5,014 | Monaco | 225 / 210 ms | 54 / 50 ms | 400 / 400 |
+| 100,257 | CodeMirror | 139 / 96 ms | 25 / 18 ms | 88 / 1 |
+| 100,257 | Monaco | 776 / 1,101 ms | 55 / 54 ms | 399 / 399 |
+
+Here, Monaco scrolls at about 18 fps at every size, CodeMirror's unified view holds about 57 fps, and its split view holds about 40 fps. Recheck on real Linux hardware at M8, as `PLAN.md` already plans.
 
 ## Not covered
 
