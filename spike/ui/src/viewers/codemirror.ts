@@ -7,6 +7,7 @@ import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript';
 import { newLineBefore } from '../diff';
 import { HoverQuestion } from '../hover';
+import { jumpTarget, moveHeader, startsCollapsed } from '../moveHeader';
 import { compareHunks, frameStats, nextFrame, settle, type Annotation, type FileDiff, type Hunk, type MountOptions, type MountStats, type Move, type ScrollStats, type Side, type Viewer } from '../model';
 import { hunkKeyOf } from './hunks';
 
@@ -192,59 +193,87 @@ function annotationGutter(anns: Annotation[]): Extension {
 
 // --- Moves -----------------------------------------------------------------
 
+const toggleMove = StateEffect.define<number>();
+
 class MoveHeader extends WidgetType {
-  constructor(readonly label: string, readonly kind: Move['kind'], readonly onClick: () => void) {
+  constructor(
+    readonly move: Move,
+    readonly end: Side,
+    readonly collapsible: boolean,
+    readonly collapsed: boolean,
+    readonly onJump: MountOptions['onJump'],
+  ) {
     super();
   }
   eq(o: MoveHeader) {
-    return o.label === this.label;
+    return o.move.id === this.move.id && o.end === this.end && o.collapsed === this.collapsed;
   }
-  toDOM() {
-    const d = document.createElement('div');
-    d.className = `mv-zone mv-${this.kind}`;
-    d.textContent = this.label;
-    d.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      this.onClick();
-    });
-    return d;
+  toDOM(view: EditorView) {
+    const r = this.end === 'new' ? this.move.to : this.move.from;
+    const t = jumpTarget(this.move, this.end);
+    return moveHeader(this.move, this.end, r.end - r.start + 1, this.collapsible, this.collapsed, {
+      onToggle: () => view.dispatch({ effects: toggleMove.of(this.move.id) }),
+      onJump: () => this.onJump(t.path, t.side, t.line),
+    }).dom;
   }
   ignoreEvent() {
     return true;
   }
 }
 
+/**
+ * Header widget + tint for each move end in this editor. A collapsed block is hidden with
+ * a block replace decoration (the mechanism collapseUnchanged uses, so MergeView keeps
+ * both sides aligned). Deleted lines in unified view belong to the merge extension and
+ * can't be hidden, so those headers have no arrow.
+ */
 function moveDecorations(file: FileDiff, side: Side, moves: Move[], unified: boolean, onJump: MountOptions['onJump']): Extension {
-  return StateField.define<DecorationSet>({
-    create(state) {
-      const doc = state.doc;
-      const decos: CmRange<Decoration>[] = [];
-      const lineFrom = (n: number) => doc.line(Math.max(1, Math.min(n, doc.lines))).from;
-      for (const m of moves) {
-        if (side === 'new' && m.to.path === file.path) {
-          const changed = new Set(m.changed ?? []);
-          const label = `⇄ ${m.kind === 'moved' ? 'Moved' : 'Moved with changes'} from ${m.from.path}:${m.from.start}–${m.from.end}  (click to jump)`;
-          decos.push(Decoration.widget({ widget: new MoveHeader(label, m.kind, () => onJump(m.from.path, 'old', m.from.start)), block: true, side: -1 }).range(lineFrom(m.to.start)));
-          for (let l = m.to.start; l <= m.to.end; l++) decos.push(Decoration.line({ class: changed.has(l) ? 'mv-line mv-line-changed' : 'mv-line' }).range(lineFrom(l)));
+  const collapsedField = StateField.define<ReadonlySet<number>>({
+    create: () => new Set(moves.filter(startsCollapsed).map((m) => m.id)),
+    update(v, tr) {
+      for (const e of tr.effects)
+        if (e.is(toggleMove)) {
+          const next = new Set(v);
+          if (!next.delete(e.value)) next.add(e.value);
+          v = next;
         }
-        const awaySide = unified ? 'new' : 'old';
-        if (side === awaySide && m.from.path === file.path) {
-          const label = `⇄ Moved to ${m.to.path}:${m.to.start}–${m.to.end}  (click to jump)`;
-          const widget = (pos: number, s: number) => Decoration.widget({ widget: new MoveHeader(label, m.kind, () => onJump(m.to.path, 'new', m.to.start)), block: true, side: s }).range(pos);
-          if (unified) {
-            const after = newLineBefore(file.hunks, m.from.start);
-            decos.push(after >= doc.lines ? widget(doc.length, 1) : widget(lineFrom(after + 1), -1));
-          } else {
-            decos.push(widget(lineFrom(m.from.start), -1));
-            for (let l = m.from.start; l <= m.from.end; l++) decos.push(Decoration.line({ class: 'mv-line-away' }).range(lineFrom(l)));
-          }
-        }
-      }
-      return Decoration.set(decos, true);
+      return v;
     },
-    update: (v) => v,
+  });
+  const build = (state: EditorState): DecorationSet => {
+    const doc = state.doc;
+    const collapsed = state.field(collapsedField);
+    const decos: CmRange<Decoration>[] = [];
+    const line = (n: number) => doc.line(Math.max(1, Math.min(n, doc.lines)));
+    const header = (m: Move, end: Side, collapsible: boolean, pos: number, s: -1 | 1) =>
+      decos.push(Decoration.widget({ widget: new MoveHeader(m, end, collapsible, collapsible && collapsed.has(m.id), onJump), block: true, side: s }).range(pos));
+    const block = (m: Move, start: number, end: number, cls: (l: number) => string) => {
+      if (collapsed.has(m.id)) decos.push(Decoration.replace({ block: true }).range(line(start).from, line(end).to));
+      else for (let l = start; l <= end; l++) decos.push(Decoration.line({ class: cls(l) }).range(line(l).from));
+    };
+    for (const m of moves) {
+      if (side === 'new' && m.to.path === file.path) {
+        const changed = new Set(m.changed ?? []);
+        header(m, 'new', true, line(m.to.start).from, -1);
+        block(m, m.to.start, m.to.end, (l) => (changed.has(l) ? 'mv-line mv-line-changed' : 'mv-line'));
+      }
+      if (m.from.path !== file.path) continue;
+      if (unified && side === 'new') {
+        const after = newLineBefore(file.hunks, m.from.start);
+        header(m, 'old', false, after >= doc.lines ? doc.length : line(after + 1).from, after >= doc.lines ? 1 : -1);
+      } else if (!unified && side === 'old') {
+        header(m, 'old', true, line(m.from.start).from, -1);
+        block(m, m.from.start, m.from.end, () => 'mv-line-away');
+      }
+    }
+    return Decoration.set(decos, true);
+  };
+  const decoField = StateField.define<DecorationSet>({
+    create: build,
+    update: (v, tr) => (tr.effects.some((e) => e.is(toggleMove)) ? build(tr.state) : v),
     provide: (f) => EditorView.decorations.from(f),
   });
+  return [collapsedField, decoField];
 }
 
 // --- Jump flash --------------------------------------------------------------

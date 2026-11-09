@@ -51,3 +51,8 @@ h3 { font-size: 11px; text-transform: uppercase; color: var(--muted); margin: 10
 /* Hover ? */
 .hover-q { position: fixed; display: none; z-index: 1000; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: #fff; color: var(--accent); font: bold 11px/1 -apple-system, sans-serif; cursor: pointer; }
 .hover-q:hover { background: var(--accent); color: #fff; }
+.mv-arrow { display: inline-block; width: 14px; margin-right: 2px; text-align: center; cursor: pointer; }
+.mv-arrow:hover { color: var(--fg); }
+.mv-label:hover { text-decoration: underline; }
+.mv-zone:hover { text-decoration: none; }
+.mv-note { color: var(--muted); }

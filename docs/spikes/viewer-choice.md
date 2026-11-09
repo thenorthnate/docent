@@ -34,12 +34,16 @@ The two CodeMirror differences are cosmetic and fixable: wrap the changes so `ma
 
 ### 2. Moved blocks within and across files (answers 8a)
 
-Both can render them, with Docent supplying the moves:
+Both can render them, with Docent supplying the moves, but only CodeMirror can also collapse them cleanly in split view:
 
 - **Split view:** a clickable header above the block ("⇄ Moved from `claims.ts:4–9` · click to jump") and a tint on its lines, on both sides. Monaco uses view zones, and CodeMirror uses block widgets. Jumping to another file works in both. Both keep the two sides aligned when the headers are added.
 - **Moved with changes:** the changed lines get a stronger tint. A full inner diff wasn't built; both could show one in a widget.
 - **Tint:** CodeMirror's line class replaces the diff colour completely. In Monaco, the tint covers the line background, but Monaco's character-level insert/delete highlight still shows through, and there's no API to switch it off for a range.
 - **Unified view:** both can put the header above the deleted block, but neither can tint or mark individual deleted lines, because the viewer owns their DOM.
+- **Collapsing:** a moved block can fold away behind its header, with an arrow to expand it again. The spike starts exact moves collapsed and leaves moves with changes open, since those still need review.
+  - **CodeMirror:** works in split view, on both sides, and the sides stay aligned. It uses a block replace decoration, the same mechanism as CodeMirror's built-in `collapseUnchanged`, so `MergeView` accounts for it. In unified view, the destination block collapses.
+  - **Monaco:** hiding lines needs `setHiddenAreas`, which works but isn't in Monaco's public typings. In split view, the two sides **lose alignment**: the diff editor's alignment code counts lines and view-zone heights but ignores hidden areas it didn't create, and there is no hook to correct it. Monaco's text layer also sits above view zones, so header clicks have to go through `onMouseDown` targets and be split by x position. Unified view behaves like CodeMirror's.
+  - **Both, unified view:** the moved-away deleted lines can't be collapsed, because the viewer renders them. CodeMirror has a way round this that Monaco lacks: because Docent supplies the diff, it could leave collapsed moved-away lines out of the original document it hands to the viewer. That wasn't built.
 - Monaco's `experimental.showMoves` is confirmed to work within one file only, using Monaco's own detection. It isn't needed, because `docent-git` detects moves.
 
 ### 3. Gutter decorations

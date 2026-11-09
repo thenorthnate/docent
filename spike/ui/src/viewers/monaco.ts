@@ -3,6 +3,7 @@ import * as monaco from './monaco-entry';
 import EditorWorker from './monaco.worker?worker';
 import { newLineBefore } from '../diff';
 import { HoverQuestion } from '../hover';
+import { jumpTarget, moveHeader, startsCollapsed, type HeaderDom } from '../moveHeader';
 import { hunkKeyOf } from './hunks';
 import { compareHunks, frameStats, nextFrame, type FileDiff, type MountOptions, type MountStats, type Move, type ScrollStats, type Side, type Viewer } from '../model';
 
@@ -83,16 +84,34 @@ export class MonacoViewer implements Viewer {
       );
     }
 
-    // Moves: tinted lines + a clickable header zone above each block.
-    const zoneMoves = new Map<string, { move: Move; target: Side }>();
-    const addZone = (ed: Editor, afterLine: number, move: Move, target: Side, label: string) => {
+    // Moves: tinted lines + a header zone above each block. The header's arrow hides
+    // the block's lines (setHiddenAreas, which works but isn't in Monaco's public typings).
+    type Header = { move: Move; ed: Editor; end: Side; collapsible: boolean; header: HeaderDom; toggle(): void; jump(): void };
+    const zones = new Map<string, Header>();
+    const collapsed = new Set(opts.moves.filter(startsCollapsed).map((m) => m.id));
+    const addZone = (ed: Editor, afterLine: number, move: Move, end: Side, collapsible: boolean) => {
+      const r = end === 'new' ? move.to : move.from;
+      const t = jumpTarget(move, end);
+      const toggle = () => {
+        if (!collapsed.delete(move.id)) collapsed.add(move.id);
+        applyHidden();
+      };
+      const jump = () => opts.onJump(t.path, t.side, t.line);
+      const header = moveHeader(move, end, r.end - r.start + 1, collapsible, collapsible && collapsed.has(move.id), { onToggle: toggle, onJump: jump });
       ed.changeViewZones((acc) => {
-        const dom = document.createElement('div');
-        dom.className = `mv-zone mv-${move.kind}`;
-        dom.textContent = label;
-        const id = acc.addZone({ afterLineNumber: afterLine, heightInLines: 1, domNode: dom });
-        zoneMoves.set(id, { move, target });
+        const id = acc.addZone({ afterLineNumber: afterLine, heightInLines: 1, domNode: header.dom, showInHiddenAreas: true });
+        zones.set(id, { move, ed, end, collapsible, header, toggle, jump });
       });
+    };
+    const applyHidden = () => {
+      for (const ed of [orig, mod]) {
+        const ranges = [...zones.values()]
+          .filter((z) => z.ed === ed && z.collapsible && collapsed.has(z.move.id))
+          .map((z) => (z.end === 'new' ? z.move.to : z.move.from))
+          .map((r) => new monaco.Range(r.start, 1, r.end, 1));
+        (ed as unknown as { setHiddenAreas(r: monaco.IRange[], source?: unknown): void }).setHiddenAreas(ranges, 'docent-moves');
+      }
+      for (const z of zones.values()) z.header.setCollapsed(z.collapsible && collapsed.has(z.move.id));
     };
     for (const m of opts.moves) {
       if (m.to.path === file.path) {
@@ -103,12 +122,12 @@ export class MonacoViewer implements Viewer {
             options: { isWholeLine: true, className: changed.has(l) ? 'mv-line mv-line-changed' : 'mv-line', linesDecorationsClassName: 'mv-bar', zIndex: 20 },
           })),
         );
-        addZone(mod, m.to.start - 1, m, 'old', `⇄ ${m.kind === 'moved' ? 'Moved' : 'Moved with changes'} from ${m.from.path}:${m.from.start}–${m.from.end}  (click to jump)`);
+        addZone(mod, m.to.start - 1, m, 'new', true);
       }
       if (m.from.path === file.path) {
-        const label = `⇄ Moved to ${m.to.path}:${m.to.start}–${m.to.end}  (click to jump)`;
         if (unified) {
-          addZone(mod, newLineBefore(file.hunks, m.from.start), m, 'new', label);
+          // Deleted lines are the diff editor's own view zones: they can't be hidden.
+          addZone(mod, newLineBefore(file.hunks, m.from.start), m, 'old', false);
         } else {
           orig.createDecorationsCollection(
             range(m.from.start, m.from.end).map((l) => ({
@@ -116,10 +135,11 @@ export class MonacoViewer implements Viewer {
               options: { isWholeLine: true, className: 'mv-line-away', linesDecorationsClassName: 'mv-bar', zIndex: 20 },
             })),
           );
-          addZone(orig, m.from.start - 1, m, 'new', label);
+          addZone(orig, m.from.start - 1, m, 'old', true);
         }
       }
     }
+    applyHidden();
 
     // Hover `?` and zone clicks.
     this.hover = new HoverQuestion((side, line) => opts.onExplain(file.path, side, line));
@@ -138,12 +158,15 @@ export class MonacoViewer implements Viewer {
         }),
         ed.onMouseLeave((e) => this.hover!.hide(e.event.browserEvent)),
         ed.onDidScrollChange(() => this.hover!.hide()),
+        // Monaco's text layer sits above view zones, so the header's own DOM listeners never
+        // fire. Route clicks through the editor and split arrow vs label by x position.
         ed.onMouseDown((e) => {
           if (e.target.type !== monaco.editor.MouseTargetType.CONTENT_VIEW_ZONE) return;
-          const hit = zoneMoves.get(e.target.detail.viewZoneId);
-          if (!hit) return;
-          const dest = hit.target === 'old' ? hit.move.from : hit.move.to;
-          opts.onJump(dest.path, hit.target, dest.start);
+          const z = zones.get(e.target.detail.viewZoneId);
+          if (!z) return;
+          const arrow = z.header.dom.querySelector('.mv-arrow')!.getBoundingClientRect();
+          if (z.collapsible && e.event.browserEvent.clientX <= arrow.right + 4) z.toggle();
+          else z.jump();
         }),
       );
     }
