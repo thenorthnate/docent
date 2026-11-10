@@ -9,7 +9,17 @@ npm --prefix spike/mockups install
 npm --prefix spike/mockups run dev   # http://localhost:5199
 ```
 
-The pink bar at the bottom switches screen and variant (← → keys work too), toggles a trusted/untrusted PR, and toggles dark/light. All state is in the URL: `?screen=pr|inbox&variant=A|B|C&trust=trusted|untrusted&theme=dark|light`.
+## Round 2: app shell
+
+Feedback on round 1: inbox B (mail split) and PR view A (findings in one place, steering button) won. Missing: a way back to the inbox, Explore, and multi-repo Projects.
+
+`?screen=app` (the default) is a navigable app built from those choices. Variant **A** puts a VS Code-style activity bar on the far left (Inbox, Review, Explore, Projects, Bookmarks, Steering, Settings); each icon opens a drawer with options for that area, and clicking the active icon collapses it. Variant **B** uses browser-style tabs across the top instead, for comparison. Pages: `&page=inbox|review|explore|project`.
+
+The round 1 variants are still under "Old PR" and "Old inbox".
+
+## Round 1
+
+The pink bar at the bottom switches screen and variant (← → keys work too), toggles a trusted/untrusted PR, and toggles dark/light. All state is in the URL: `?screen=app|pr|inbox&variant=A|B|C&trust=trusted|untrusted&theme=dark|light`.
 
 | Screen | A | B | C |
 |---|---|---|---|

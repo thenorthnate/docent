@@ -28,7 +28,7 @@ const show = import.meta.env.DEV
   <div v-if="show" class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full bg-fuchsia-600 px-2 py-1.5 text-xs font-medium text-white shadow-2xl ring-2 ring-white/40">
     <button v-for="s in Object.keys(screens)" :key="s" class="rounded-full px-2.5 py-1 capitalize"
       :class="state.screen === s ? 'bg-white text-fuchsia-700' : 'hover:bg-white/20'"
-      @click="set({ screen: s, variant: 'A' })">{{ s === 'pr' ? 'PR view' : s }}</button>
+      @click="set({ screen: s, variant: 'A' })">{{ s === 'pr' ? 'Old PR' : s === 'inbox' ? 'Old inbox' : 'App' }}</button>
     <span class="mx-1 h-4 w-px bg-white/40" />
     <button class="rounded-full p-1 hover:bg-white/20" @click="step(-1)"><ChevronLeft class="size-4" /></button>
     <span class="min-w-36 text-center">{{ state.variant }} ({{ label }})</span>

@@ -11,13 +11,21 @@ import PrC from './variants/PrC.vue'
 import InboxA from './variants/InboxA.vue'
 import InboxB from './variants/InboxB.vue'
 import InboxC from './variants/InboxC.vue'
+import { page } from './url'
+import InboxPage from './app/InboxPage.vue'
+import ReviewPage from './app/ReviewPage.vue'
+import ExplorePage from './app/ExplorePage.vue'
+import ProjectPage from './app/ProjectPage.vue'
 
 const screens = {
+  app: { A: ['Activity bar', null], B: ['Top tabs', null] },
   pr: { A: ['Three panes', PrA], B: ['Inline + popover', PrB], C: ['Triage queue', PrC] },
   inbox: { A: ['Dense table', InboxA], B: ['Mail split', InboxB], C: ['Board', InboxC] },
 } as const
 
+const pages = { inbox: InboxPage, review: ReviewPage, explore: ExplorePage, project: ProjectPage } as const
 const current = computed(() => {
+  if (state.screen === 'app') return [0, pages[page.current as keyof typeof pages] ?? InboxPage]
   const s = screens[state.screen as keyof typeof screens] ?? screens.pr
   return (s as any)[state.variant] ?? s.A
 })
