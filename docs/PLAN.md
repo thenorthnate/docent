@@ -159,6 +159,7 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 
 ### 5.2 Inbox (M1)
 
+- Layout: mail split. Sections and watched repos in the drawer (see 5.4), the PR list in the middle, and a preview of the selected PR on the right: what changed since your last review, the AI summary, lens results, and trust. **Open review** or a double-click opens it ([UI mockups](spikes/ui-mockups.md)).
 - Sections: **Review requested**, **Assigned**, **Authored by me**, **Mentioned**, **Pinned**, all limited to watched repos.
 - One quiet line for what's filtered out, e.g. "2 review requests in unwatched repos", with a **Watch** button.
 - A watched repo with no local clone shows **Bind** and **Clone**.
@@ -183,20 +184,26 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 
 ### 5.4 PR review view (M1–M4)
 
+The app shell is an **activity bar** down the far left: Inbox, Review, Explore, Projects, Bookmarks, Steering suggestions, and Settings at the bottom. Each icon opens a **drawer** beside it with options for that area; clicking the active icon closes it. Bookmarks and Steering open over any page. Chosen in the [UI mockups spike](spikes/ui-mockups.md).
+
 ```
-┌ File tree (status, viewed ✓, finding counts) ┬ Diff ───────────────────────┬ Agent panel ─────────┐
-│                                               │  gutter: ● findings         │ [Explain] [Bugs]     │
-│                                               │          💬 comments        │ [Style] [Modernize]  │
-│                                               │  hover line → ? at far right│ [Chat]               │
-└───────────────────────────────────────────────┴─────────────────────────────┴──────────────────────┘
- Top bar: PR title · branch → base · CI · "3 new commits since your review" · [Submit review ▾]
+┌─┬ Drawer ───────────────┬ Diff ────────────────────────┬ Agent panel ───────────────┐
+│▣│ Open reviews           │  gutter: ● findings          │ [Findings] [Explain] [Chat]│
+│▣│ Files changed          │          💬 comments          │ Your review (pending)      │
+│▣│  (viewed ✓, finding    │  click line number → comment │ ▾ Bugs · 2 rules   4  [on] │
+│▣│   and comment counts)  │  hover line → ? at far right │ ▾ Style · 4 rules  1  [on] │
+│⚙│                        │                              │ ▸ Secrets          off     │
+└─┴────────────────────────┴──────────────────────────────┴────────────────────────────┘
+ Top bar: Inbox › repo › PR title · CI · "3 new commits" · [Explore this branch] · [Submit review ▾]
+ Bottom: Agent activity drawer · Verify
 ```
 
 - Overview tab: description, checks, timeline, and an AI summary from the explainer lens.
 - Diff modes: unified or split, full PR or since-last-review, ignore-whitespace. Moved code shows as moved (see 5.14).
 - Show/hide findings by lens and severity.
 - Your pending comments have their own gutter marker, and the file tree counts them beside agent findings.
-- Lens chips in the agent panel can be switched on or off for this PR (with "apply to repo"), and show their steering count (`Style · 4 rules`).
+- Findings appear only in the agent panel (plus gutter dots and tree counts), **grouped by lens**. Each group shows its steering count (`Style · 4 rules`), its finding count, and an on/off switch for this PR (a switched-off lens offers **Run anyway** and "apply to repo"). Groups start expanded and can be collapsed; a collapsed group shows how many findings it hides. Switching a lens off also hides its gutter dots.
+- Your pending comments are listed above the lens groups as **Your review**. On an untrusted PR they stay visible, and the trust card takes the place of the lens groups.
 - You can click and move the cursor anywhere freely. Agents are only triggered by the `?`.
 
 ### 5.5 Agents ("lenses") (M2–M3)
@@ -285,18 +292,19 @@ ACP gives Docent no way to read an agent's settings; Inherit mode works by not o
 
 ### 5.8 Commenting and submitting reviews (M4)
 
-- Click the gutter or select lines → comment box (markdown, preview, GitHub `suggestion` blocks). Comments you write yourself can become steering suggestions after you submit (see 5.13).
+- Click a line number or select lines → a new comment box at the top of the agent panel (markdown, preview, GitHub `suggestion` blocks). It has a **kind**: General or one of the review lenses. Comments you write yourself can become steering suggestions after you submit, filed under their kind (see 5.13).
 - **Promote a finding** to a comment in one click. Docent pre-fills the text and you edit it before posting.
 - Comments collect into a **pending review**, then go out together with **Comment / Approve / Request changes**.
 - Reply to, resolve and unresolve existing threads. Single comments can also post immediately.
-- Optional: "draft with agent". You write the gist and the explainer lens polishes it, never posting automatically.
+- Optional: "draft with agent". You write the gist and the explainer lens polishes it. The draft appears under your text to use or ignore, and never posts automatically.
 
 ### 5.9 Explore mode (M6, M6b)
 
 **M6:**
 
-- Pick any bound repo, then a branch, tag or commit. Docent creates or refreshes a worktree at that ref.
-- File tree and read-only code viewer with the same `?` agent panel. Explain uses blame and log ("introduced in #1234 to fix …").
+- Pick any bound repo, then a branch, tag or commit. Docent creates or refreshes a worktree at that ref. From the rail, Explore starts on the default branch.
+- **Explore this branch** on a PR opens Explore at the PR's head, with the files and lines the PR changed marked in the tree and the gutter, so you can read the change inside the rest of the code.
+- Full file tree and read-only code viewer with the same `?` agent panel. Explain uses blame and log ("introduced in #1234 to fix …").
 - Bugs, Style and Modernize run on demand for the current file or selection.
 - If the selected branch has an open PR, Docent offers to jump into Review mode.
 - **Findings**: save, or copy as markdown.
@@ -356,14 +364,14 @@ Built from the start so this doesn't need a rework: `AgentBackend` takes multipl
 
 - After you submit a review in a trusted repo, one short background session reads the **new review comments you wrote yourself**. Replies to existing threads and unedited promoted findings don't count; comments deleted before submitting never count.
 - Only comments that generalize into a rule become candidates (most will be style). One-off comments produce nothing.
-- Each candidate is assigned to the closest lens, or to **General** (all review lenses), and compared with existing rules. A near-duplicate is offered as **merge with existing rule X**, with the merged wording.
-- Candidates go to a **Steering suggestions** list (a badge in the top bar), never a pop-up. Each stays until you **accept**, **edit**, **reassign**, choose **repo** or **global** scope, or **dismiss**. Nothing applies without your approval.
+- Each candidate is filed under its comment's **kind** (see 5.8): a lens, or **General** (all review lenses), then compared with existing rules. A near-duplicate is offered as **merge with existing rule X**, with the merged wording.
+- Candidates go to a **Steering suggestions** list (the Steering icon on the activity bar, with a badge), never a pop-up. Each stays until you **accept**, **edit**, **reassign**, choose **repo** or **global** scope, or **dismiss**. Nothing applies without your approval.
 
 **Scope**: accepted rules are per repo by default. **Promote to global** moves a rule into the global library, applying it wherever that lens is on, including Explore and self-review.
 
 **Visibility:**
 
-- Lens chips in the agent panel show a rule count. Clicking one lists the rules to edit, reassign or delete.
+- Lens groups in the agent panel show a rule count. Clicking it lists the rules to edit, reassign or delete.
 - Repo Settings → **Lenses & steering** lists every lens with its rules, marked "from comment on #123", "global" or "repo", plus a rough token cost per lens.
 - A finding that a rule triggered cites it ("per your rule: prefer `errors.Is`") through an optional `steering_rule_id` field.
 
@@ -437,6 +445,7 @@ Each milestone is a set of short-lived branches off `main`.
 |---|---|---|
 | **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. **Done: go** ([write-up](spikes/work-laptop-proof.md)). The restricted-agent questions move to M2. |
 | **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. **Done: CodeMirror 6** ([write-up](spikes/viewer-choice.md)). |
+| **UI** | **UI mockups** | Throwaway mockups of the shell, inbox, PR view, Explore, Projects and Settings, to fix the layout before M1. **Done: activity bar, mail-split inbox, three-pane review** ([write-up](spikes/ui-mockups.md)). |
 | **M1** | GitHub inbox + read-only PR view | Auth, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle |
 | **M2** | Explain + trust + agent settings | Trust model, profiles and detection, tool policy, Explain, PR summary, Chat, activity drawer |
 | **M3** | Review lenses | Bugs, Style, Modernize & lint; findings in gutter and file tree; fingerprints; caching; lens files; lens management (global library, repo lens sets, custom lenses, tombstones, toggles, Run anyway) |
