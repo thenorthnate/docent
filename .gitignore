@@ -25,3 +25,4 @@ dist-ssr
 
 # Cargo workspace build output
 /target/
+*.tsbuildinfo
