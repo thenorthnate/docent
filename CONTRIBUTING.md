@@ -54,7 +54,9 @@ One local command runs the same checks as CI:
 just check
 ```
 
-It runs `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and the UI's lint, typecheck (`vue-tsc`) and tests. It must pass before a PR is marked ready for review. The `justfile` and CI workflow arrive with the scaffold PR. Install `just` with `brew install just`.
+It runs `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and the UI's lint (ESLint, no warnings allowed), typecheck (`vue-tsc`) and tests (Vitest). It must pass before a PR is marked ready for review. CI runs it on macOS arm64, along with a release build and a Linux `cargo check`.
+
+You need Rust (stable), Node 22 or later, pnpm (the version is pinned in `package.json`) and `just` (`brew install just`). Run `just setup` once to install dependencies, and `just dev` to run the app.
 
 ## Review
 
