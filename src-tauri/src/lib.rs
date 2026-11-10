@@ -1,16 +1,15 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+/// The app version, as built. Shown in the UI so a bug report can name it.
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+fn app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![app_version])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("Tauri failed to start the app; nothing can run without it");
 }
 
 #[cfg(test)]
