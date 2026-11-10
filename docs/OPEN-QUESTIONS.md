@@ -4,18 +4,18 @@ The design was stress-tested in November 2026. `PLAN.md` holds the result. This 
 
 ## Still open
 
-### To answer in M0.5 (on the work laptop)
+### Carried from M0.5 into M2 (on the work laptop)
 
-These need a real test, not a decision.
+M0.5 answered 1, 2, 3, 6 and 7 (see Resolved). These still need a real test. The steps are in the round-2 list in `spike/README.md` on the `spike/work-laptop-proof` branch.
 
-1. Is `kiro-cli acp` allowed as a subprocess of another app, or is a waiver needed?
-2. Does Explain give useful answers on real work code?
-3. Does Kiro's workspace trust apply under ACP? Test with a malicious `.kiro/` folder. The docs don't say.
-4. Can a restricted Kiro custom agent still reach the Jira MCP read tools?
+3b. When a repo's instructions steered Kiro into running `touch`, did Kiro send a permission request to the client first, or run it under its own policy? If it didn't ask, ACP permission answers are no control for Kiro.
+3c. Does the v3 engine (`--agent-engine v3`) apply workspace trust under ACP? v2 is the default and applied none.
+3d. Can a workspace `.kiro/agents/<name>.json` shadow Docent's **named** global agent, as `kiro_default` was shadowed? Does a separate `KIRO_HOME` stop Kiro reading workspace `.kiro/`?
+4. Can a restricted Kiro custom agent still reach the Jira MCP read tools, with writes refused? Blocked in M0.5 because the named agent never loaded.
+4a. How does a Jira MCP server's OAuth login work under ACP? Kiro sent `_kiro.dev/mcp/oauth_request` to the client. Does Docent need to handle it (and `--auth-method client`), or is a login made once in `kiro-cli chat` reused?
 5. Does a session-injected MCP server work under a restricted Kiro profile? For information only.
-6. Does `gh auth token` work with SSO for every API call Docent needs, including REST `/notifications`?
-7. Does Kiro report usage through `usage_update`, or only `_meta.kiro` metering?
-7a. Can a restricted Kiro custom agent run one allowlisted shell command (for verification), while other commands are refused?
+7a. Can a restricted Kiro custom agent run one allowlisted shell command (for verification), while other commands are refused? Which layer refuses: Kiro's policy or Docent's permission answer?
+7b. What is the shape of Kiro's usage in `_meta` and `_kiro.dev/metadata`?
 
 ### To test before relying on Claude Code
 
@@ -119,3 +119,15 @@ See [`spikes/viewer-choice.md`](spikes/viewer-choice.md).
 | Diff source in the viewer | Always git's hunks, passed through `diffConfig.override` |
 | Moves across files (was 8a) | Yes: headers rendered as block widgets, with a click to jump to the other end |
 | Collapsing moves | Exact moves collapsed by default with an expand arrow; moves with changes start expanded |
+
+### Added by the M0.5 work-laptop proof
+
+See [`spikes/work-laptop-proof.md`](spikes/work-laptop-proof.md).
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | `kiro-cli acp` as a subprocess | Allowed; no waiver needed |
+| 2 | Explain useful on work code | Yes, even without Jira ticket text. Gate passed: **go** for M1 |
+| 3 | Kiro workspace trust under ACP | **Not applied** on the default (v2) engine. `AGENTS.md` and steering injections ran commands; a workspace `kiro_default` agent replaced the default and its prompt, hooks and MCP server ran. Docent always names its agent and fails if it doesn't load (`PLAN.md` 5.6). Follow-ups 3b–3d |
+| 6 | `gh` token under SSO | Every call Docent needs works, including `/notifications` with a 304 on a conditional repeat |
+| 7 | Kiro usage reporting | No `usage_update`; usage comes in `_meta` and `_kiro.dev/metadata`. Per-agent usage adapter (`PLAN.md` 5.5). Shape is 7b |
