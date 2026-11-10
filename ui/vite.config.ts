@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import process from "node:process";
@@ -23,5 +24,10 @@ export default defineConfig(() => ({
           port: 1421,
         }
       : undefined,
+  },
+
+  test: {
+    environment: "happy-dom",
+    include: ["src/**/*.test.ts"],
   },
 }));
