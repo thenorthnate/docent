@@ -1,0 +1,20 @@
+{
+  "name": "docent-ui-mockups",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5199",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.71.0",
+    "vue": "^3.5.45"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.6"
+  }
+}

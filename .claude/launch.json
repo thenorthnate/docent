@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui-mockups",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "spike/mockups", "run", "dev"],
+      "port": 5199
+    }
+  ]
+}
