@@ -1,20 +1,20 @@
 // PROTOTYPE: fake data for Explore and Projects (PLAN.md §5.9).
 
-export interface TreeNode { name: string; dir?: boolean; open?: boolean; children?: TreeNode[]; active?: boolean; bookmark?: boolean }
+export interface TreeNode { name: string; change?: 'M' | 'A'; dir?: boolean; open?: boolean; children?: TreeNode[]; active?: boolean; bookmark?: boolean }
 
 export const paymentsTree: TreeNode[] = [
   { name: 'cmd', dir: true, children: [{ name: 'server', dir: true }] },
   { name: 'internal', dir: true, open: true, children: [
     { name: 'billing', dir: true },
     { name: 'config', dir: true, open: true, children: [{ name: 'env.go' }, { name: 'env_test.go' }] },
-    { name: 'scheduler', dir: true },
-    { name: 'store', dir: true },
+    { name: 'scheduler', dir: true, change: 'M' },
+    { name: 'store', dir: true, change: 'M' },
     { name: 'webhook', dir: true, open: true, children: [
-      { name: 'client.go' }, { name: 'deliver.go', active: true, bookmark: true }, { name: 'deliver_test.go' }, { name: 'signing.go' },
+      { name: 'backoff.go', change: 'A' }, { name: 'client.go' }, { name: 'deliver.go', active: true, bookmark: true, change: 'M' }, { name: 'deliver_test.go' }, { name: 'retry.go', change: 'A' }, { name: 'retry_test.go', change: 'A' }, { name: 'signing.go' },
     ] },
   ] },
   { name: 'migrations', dir: true },
-  { name: 'go.mod' }, { name: 'go.sum' }, { name: 'Makefile' }, { name: 'README.md' },
+  { name: 'go.mod', change: 'M' }, { name: 'go.sum' }, { name: 'Makefile' }, { name: 'README.md' },
 ]
 
 export const infraTree: TreeNode[] = [

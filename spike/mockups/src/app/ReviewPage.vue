@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { Check, ChevronDown, ChevronRight, CircleCheck, FileCode, Play, Telescope, Terminal } from '@lucide/vue'
 import { activity, currentFile, files, pr } from '../data/mock'
 import { go } from '../url'
+import { exploreBranch, review } from './store'
 import Shell from './Shell.vue'
 import AgentPanel from './AgentPanel.vue'
 import DiffView from '../components/DiffView.vue'
@@ -42,8 +43,8 @@ const drawer = ref(false)
       <CircleCheck class="size-4 shrink-0 text-emerald-500" />
       <span class="shrink-0 rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] text-sky-400">{{ pr.newSinceReview.commits }} new commits</span>
       <div class="ml-auto flex shrink-0 items-center gap-2">
-        <button :class="btn" @click="go('explore')"><Telescope class="size-3.5" /> Explore at head</button>
-        <button :class="btnPrimary">Submit review (1) <ChevronDown class="size-3.5" /></button>
+        <button :class="btn" title="Browse the whole repo at this PR's head, with its changes marked" @click="exploreBranch(); go('explore')"><Telescope class="size-3.5" /> Explore this branch</button>
+        <button :class="btnPrimary">Submit review ({{ review.pending.length }}) <ChevronDown class="size-3.5" /></button>
       </div>
     </header>
     <div class="flex items-center gap-1 border-b px-3 text-xs">
@@ -57,7 +58,7 @@ const drawer = ref(false)
     <div class="flex min-h-0 flex-1">
       <main class="min-w-0 flex-1 overflow-auto">
         <div class="sticky top-0 z-10 flex items-center gap-2 border-b bg-background px-3 py-1.5 font-mono text-xs">{{ currentFile }}<label class="ml-auto flex items-center gap-1 font-sans text-muted-foreground"><input type="checkbox" /> Viewed</label></div>
-        <DiffView :findings-on="trusted" />
+        <DiffView :findings-on="trusted" :lens-on="review.enabled" :draft-line="review.draftLine" :pending-lines="review.pending.map(p => p.line)" @comment="n => (review.draftLine = n)" />
       </main>
       <AgentPanel mode="review" :trusted="trusted" />
     </div>
