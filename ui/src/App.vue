@@ -3,9 +3,15 @@ import { onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
 const version = ref<string | null>(null);
+const versionFailed = ref(false);
 
 onMounted(async () => {
-  version.value = await invoke<string>("app_version");
+  try {
+    version.value = await invoke<string>("app_version");
+  } catch (error) {
+    versionFailed.value = true;
+    console.error("Could not read the app version", error);
+  }
 });
 </script>
 
@@ -14,6 +20,9 @@ onMounted(async () => {
     <h1>Docent</h1>
     <p v-if="version">
       v{{ version }}
+    </p>
+    <p v-else-if="versionFailed">
+      version unknown
     </p>
   </main>
 </template>

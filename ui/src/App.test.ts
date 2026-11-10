@@ -25,4 +25,16 @@ describe("App", () => {
     expect(wrapper.get("h1").text()).toBe("Docent");
     expect(wrapper.text()).toContain("v1.2.3");
   });
+
+  it("still renders when the version can't be read", async () => {
+    mockIPC(() => {
+      throw new Error("IPC unavailable");
+    });
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.get("h1").text()).toBe("Docent");
+    expect(wrapper.text()).toContain("version unknown");
+  });
 });
