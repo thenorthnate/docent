@@ -16,7 +16,7 @@ const rail = [
   { key: 'bookmarks', icon: Bookmark, label: 'Bookmarks', badge: 0 },
   { key: 'steering', icon: Lightbulb, label: 'Steering suggestions', badge: steering.length },
 ]
-const pages = ['inbox', 'review', 'explore', 'project']
+const pages = ['inbox', 'review', 'explore', 'project', 'settings']
 const panel = ref<string | null>(page.current)
 
 function click(key: string) {
@@ -42,7 +42,7 @@ const tabs = [
       <div class="ml-auto flex items-center gap-1 pb-1">
         <button :class="btn" @click="panel = panel === 'bookmarks' ? page.current : 'bookmarks'"><Bookmark class="size-3.5" /></button>
         <button :class="btn" @click="panel = panel === 'steering' ? page.current : 'steering'"><Lightbulb class="size-3.5" /><span class="rounded-full bg-fuchsia-500 px-1.5 text-[10px] text-white">{{ steering.length }}</span></button>
-        <button :class="btn"><Settings class="size-3.5" /></button>
+        <button :class="btn" @click="go('settings'); panel = 'settings'"><Settings class="size-3.5" /></button>
       </div>
     </div>
 
@@ -55,7 +55,8 @@ const tabs = [
           <component :is="r.icon" class="size-5" />
           <span v-if="r.badge" class="absolute right-0.5 top-0.5 min-w-4 rounded-full px-1 text-[9px] leading-4 text-white" :class="r.key === 'steering' ? 'bg-fuchsia-500' : 'bg-sky-500'">{{ r.badge }}</span>
         </button>
-        <button title="Settings" class="mt-auto flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"><Settings class="size-5" /></button>
+        <button title="Settings" class="relative mt-auto flex size-9 items-center justify-center rounded-md" :class="page.current === 'settings' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'" @click="click('settings')">
+          <span v-if="page.current === 'settings'" class="absolute -left-1.5 top-1.5 h-6 w-0.5 rounded bg-primary" /><Settings class="size-5" /></button>
       </nav>
 
       <!-- drawer -->

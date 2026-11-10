@@ -9,6 +9,10 @@ npm --prefix spike/mockups install
 npm --prefix spike/mockups run dev   # http://localhost:5199
 ```
 
+## Round 4: settings
+
+Lens groups now start expanded. Settings (`&page=settings`, gear at the bottom of the rail): app sections (Accounts, Agent profiles with permission mode and MCP allowlist, Lens library, Trust, Notifications, Data & storage) and one entry per watched repo (Clone & agent, Lenses & steering, Trust & verification).
+
 ## Round 3: review panel
 
 Activity bar chosen. Changes: **Explore this branch** opens the PR head (not main) with changed files and lines marked; findings are grouped by lens, each with an on/off switch, collapsed by default with a hidden count; clicking a line number opens a new comment in the panel with a **Kind** (lens or General) and **Draft with agent** (PLAN §5.8).

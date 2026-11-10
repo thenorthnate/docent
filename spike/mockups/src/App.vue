@@ -16,6 +16,7 @@ import InboxPage from './app/InboxPage.vue'
 import ReviewPage from './app/ReviewPage.vue'
 import ExplorePage from './app/ExplorePage.vue'
 import ProjectPage from './app/ProjectPage.vue'
+import SettingsPage from './app/SettingsPage.vue'
 
 const screens = {
   app: { A: ['Activity bar', null], B: ['Top tabs', null] },
@@ -23,7 +24,7 @@ const screens = {
   inbox: { A: ['Dense table', InboxA], B: ['Mail split', InboxB], C: ['Board', InboxC] },
 } as const
 
-const pages = { inbox: InboxPage, review: ReviewPage, explore: ExplorePage, project: ProjectPage } as const
+const pages = { inbox: InboxPage, review: ReviewPage, explore: ExplorePage, project: ProjectPage, settings: SettingsPage } as const
 const current = computed(() => {
   if (state.screen === 'app') return [0, pages[page.current as keyof typeof pages] ?? InboxPage]
   const s = screens[state.screen as keyof typeof screens] ?? screens.pr
