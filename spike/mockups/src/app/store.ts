@@ -15,3 +15,8 @@ export const explore = reactive({ ref: 'main', sha: 'a41f0e2', fromPr: false })
 export function exploreBranch() {
   Object.assign(explore, { ref: pr.head, sha: '9f2c1a7', fromPr: true })
 }
+
+// Screenshot hooks: ?draft=47 opens a new comment, ?from=pr opens Explore on the PR branch.
+const q = new URLSearchParams(location.search)
+if (q.get('draft')) review.draftLine = Number(q.get('draft'))
+if (q.get('from') === 'pr') exploreBranch()
