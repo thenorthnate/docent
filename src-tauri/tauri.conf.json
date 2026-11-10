@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "docent",
+  "productName": "Docent",
   "version": "0.1.0",
   "identifier": "com.thenorthnate.docent",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm --filter docent-ui dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "pnpm --filter docent-ui build",
+    "frontendDist": "../ui/dist"
   },
   "app": {
     "windows": [
       {
-        "title": "docent",
+        "title": "Docent",
         "width": 800,
         "height": 600
       }
