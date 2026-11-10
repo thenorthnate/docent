@@ -21,10 +21,6 @@ These need a real test, not a decision.
 
 8. Does the combined lockdown work (`settingSources: []`, `tools`, `strictMcpConfig`, `disableAllHooks`)? Each option was found in source or docs, but the combination is untested, and dropping user settings may drop auth config. Also test `settingSources: ["user"]` (Inherit mode), which keeps user settings and may fix the auth question.
 
-### To confirm in the M0 spike
-
-8a. Can the chosen viewer render moved blocks across files? Monaco's experimental `showMoves` appears to work only within one file.
-
 ### To decide later
 
 9. **OS sandbox** around the agent process: decide at M8, before public release. Windows is the weak spot.
@@ -44,7 +40,7 @@ These need a real test, not a decision.
 | # | Question | Decision |
 |---|---|---|
 | Q1 | UI component library | shadcn-vue |
-| Q2 | Diff/code viewer | Monaco vs CodeMirror 6, chosen by spike |
+| Q2 | Diff/code viewer | CodeMirror 6, chosen by the M0 spike (see below) |
 | Q3 | When review lenses run | Auto on opening a new head SHA, narrowed by the auto-run rules in `PLAN.md` 5.5 |
 | Q4 | Agents running commands | ~~Agents never run commands by policy~~ **Superseded** by verification (see below): allowlisted commands in a verify worktree, in repos with Trust + allow verification. Docent never installs toolchains |
 | Q5 | Findings private until promoted | Yes, always. No auto-post in v1 |
@@ -112,3 +108,14 @@ These need a real test, not a decision.
 | Verification runs | On demand by default, optional auto-run per repo; 10 min per command, one run per repo |
 | Permission modes | Per profile: Docent-managed (default; web search and fetch off) or Inherit harness settings (user level only) |
 | Milestones | Lens management in M3; moved code and steering in M4; verification and permission modes in new M4b; MVP is M0.5–M4b |
+
+### Added by the M0 viewer spike
+
+See [`spikes/viewer-choice.md`](spikes/viewer-choice.md).
+
+| Topic | Decision |
+|---|---|
+| Viewer | CodeMirror 6 (`@codemirror/merge`). Monaco can't take an external diff, and disagreed with git's hunks in 42 of 133 real files |
+| Diff source in the viewer | Always git's hunks, passed through `diffConfig.override` |
+| Moves across files (was 8a) | Yes: headers rendered as block widgets, with a click to jump to the other end |
+| Collapsing moves | Exact moves collapsed by default with an expand arrow; moves with changes start expanded |

@@ -36,7 +36,7 @@
 |---|---|
 | App framework | Tauri 2 (Rust backend, system webview) |
 | Frontend | Vue 3 + TypeScript + Vite, Tailwind CSS v4, shadcn-vue |
-| Diff/code viewer | Monaco vs CodeMirror 6, chosen by the M0 spike |
+| Diff/code viewer | CodeMirror 6 (`@codemirror/merge`), fed git's own hunks. Chosen by the M0 spike ([write-up](spikes/viewer-choice.md)) |
 | Agent integration | ACP client behind an `AgentBackend` interface, so the way Docent talks to agents can change |
 | Forges | GitHub first (`Forge` interface); GitLab in 0.2 |
 | Forge auth | Token from `gh auth token --hostname <host>`, held in memory. PAT in the keychain as fallback. Device flow at M8 |
@@ -115,7 +115,7 @@ Splitting the Rust side into small crates keeps the forge, git and agent logic t
 | Scaffold | `create-tauri-app` (Vue + TS template) | Official, zero custom glue |
 | UI state / routing | Pinia, Vue Router | Vue standard |
 | Components | shadcn-vue on Reka UI | Tailwind-native, copy-in components, accessible |
-| Diff & code view | Monaco **or** CodeMirror 6 (`@codemirror/merge`), chosen in M0 | Monaco: VS Code-grade diff; CodeMirror: lighter |
+| Diff & code view | CodeMirror 6 (`@codemirror/merge`) | Accepts an external diff (`diffConfig.override`), so it shows git's hunks; light and fast on large files. Chosen in M0 |
 | Markdown in panels | `markdown-it` + Shiki for code blocks | Agent output is markdown |
 | GitHub API | `octocrab` (REST + GraphQL) | Mature Rust client |
 | Git operations | System `git` CLI via `tokio::process` | Worktrees, range-diff and blame are first-class in git |
@@ -374,7 +374,8 @@ Built from the start so this doesn't need a rework: `AgentBackend` takes multipl
 - `docent-git` detects moved blocks itself (git-style block matching, as in `--color-moved`), **within and across files**, independent of the viewer.
 - The diff shows a moved block as **moved from `file:line`** (click to jump) or **moved with changes**, with the small inner diff.
 - Moved, unchanged lines are left out of lens prompts to save tokens.
-- The M0 spike confirms the chosen viewer can render this. Monaco's experimental `showMoves` appears to cover single files only.
+- Moves that need no review stay out of the way: an exact move is **collapsed** behind its header by default, with an arrow to expand it. A move with changes starts expanded.
+- The M0 spike confirmed CodeMirror renders all of this in split view, with both sides aligned. In unified view the viewer draws deleted lines itself, so a collapsed moved-away block is hidden by leaving it out of the original document Docent hands the viewer.
 
 ### 5.15 Verification (M4b)
 
@@ -435,7 +436,7 @@ Each milestone is a set of short-lived branches off `main`.
 | # | Milestone | Outcome |
 |---|---|---|
 | **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. |
-| **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. |
+| **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. **Done: CodeMirror 6** ([write-up](spikes/viewer-choice.md)). |
 | **M1** | GitHub inbox + read-only PR view | Auth, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle |
 | **M2** | Explain + trust + agent settings | Trust model, profiles and detection, tool policy, Explain, PR summary, Chat, activity drawer |
 | **M3** | Review lenses | Bugs, Style, Modernize & lint; findings in gutter and file tree; fingerprints; caching; lens files; lens management (global library, repo lens sets, custom lenses, tombstones, toggles, Run anyway) |
@@ -483,7 +484,7 @@ Each milestone is a set of short-lived branches off `main`.
 | Prompt injection writes to Jira | Read-only tool allowlist in lens sessions, separate approved session for writes |
 | ACP agents differ in capabilities and output quality | Schema validation with retry, per-agent quirk flags in profiles, mock-agent tests |
 | Agent cost and latency on big PRs | Auto-run limits, interdiff re-runs, cache, cancel |
-| Viewer problems on Linux WebKitGTK surface late | One-off load test in M0, full matrix at M8 |
+| Viewer problems on Linux WebKitGTK surface late | One-off load test in M0 (passed under CI software rendering), full matrix at M8 |
 | GitHub rate limits from polling | Conditional `/notifications` polling, GraphQL only on change, backoff |
 | `/notifications` doesn't accept the `gh` token | Test in M0.5; fall back to a slower GraphQL poll |
 | Force-pushes break "since last review" | `git range-diff` fallback; old SHAs kept in `refs/docent/*` |
