@@ -238,7 +238,7 @@ Otherwise lenses are on demand. Each lens uses one session per PR on the whole d
 
 **Customizing lenses**: see 5.12.
 
-**Usage display**: per-lens usage is shown where the agent reports it (ACP `usage_update`).
+**Usage display**: per-lens usage is shown where the agent reports it, through a per-agent adapter: ACP `usage_update` where the agent sends it (claude-agent-acp), and `_meta` plus the `_kiro.dev/metadata` notification for Kiro, which sends no `usage_update` ([M0.5](spikes/work-laptop-proof.md)).
 
 ### 5.6 Trust and agent safety (M2)
 
@@ -260,7 +260,7 @@ Fork PRs always need **Trust this PR**, even in a trusted repo, and that resets 
 
 **What trust means**: ACP permission requests are optional for agents, and not advertising `fs/write_text_file` doesn't stop an agent's built-in tools. So read-only is **best-effort**, not guaranteed, and the Trust dialog says so plainly. Controls:
 
-- **Kiro**: a restricted custom agent with a tool allowlist.
+- **Kiro**: a restricted custom agent with a tool allowlist, always selected by name (`--agent`). M0.5 showed that Kiro applies no workspace trust under ACP: a repo's `.kiro/agents/kiro_default.json` replaces the default agent, and its hooks and MCP servers run at spawn ([write-up](spikes/work-laptop-proof.md)). So Docent never lets Kiro fall back to a default agent: a run where the named agent didn't load (`_kiro.dev/agent/not_found`) fails and is shown as an error. Whether a workspace agent can shadow Docent's named agent is still open (`OPEN-QUESTIONS.md`).
 - **Claude Code**: `settingSources: []` (or `["user"]` in Inherit mode, never `"project"`), a restricted `tools` list, `strictMcpConfig`, `disableAllHooks`, and an explicit `session/set_mode`.
 - **All agents**: forge tokens stripped from the environment at spawn; Docent denies any permission request outside the policy.
 - **MCP tools**: denied unless on the profile's allowlist, including any new tools a server adds later. Lens sessions get Jira **read** tools only (get, search), so injected content can't write to Jira.
@@ -435,7 +435,7 @@ Each milestone is a set of short-lived branches off `main`.
 
 | # | Milestone | Outcome |
 |---|---|---|
-| **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. |
+| **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. **Done: go** ([write-up](spikes/work-laptop-proof.md)). The restricted-agent questions move to M2. |
 | **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. **Done: CodeMirror 6** ([write-up](spikes/viewer-choice.md)). |
 | **M1** | GitHub inbox + read-only PR view | Auth, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle |
 | **M2** | Explain + trust + agent settings | Trust model, profiles and detection, tool policy, Explain, PR summary, Chat, activity drawer |
@@ -480,13 +480,13 @@ Each milestone is a set of short-lived branches off `main`.
 |---|---|
 | Kiro can't be run over ACP at work | M0.5 gate, `AgentBackend` interface, waiver request |
 | Agents ignore the read-only policy | Trust gate, restricted agent configs, stripped tokens, plain wording in the Trust dialog, OS sandbox decision at M8 |
-| Kiro loads hostile workspace config under ACP (unconfirmed) | Malicious `.kiro/` test in M0.5 |
+| Kiro loads hostile workspace config under ACP (**confirmed in M0.5**: repo agents, hooks, steering and `AGENTS.md` all take effect) | Never start an agent before trust; always name Docent's agent and fail if it doesn't load; open questions on v3 engine, `KIRO_HOME` and named-agent shadowing |
 | Prompt injection writes to Jira | Read-only tool allowlist in lens sessions, separate approved session for writes |
 | ACP agents differ in capabilities and output quality | Schema validation with retry, per-agent quirk flags in profiles, mock-agent tests |
 | Agent cost and latency on big PRs | Auto-run limits, interdiff re-runs, cache, cancel |
 | Viewer problems on Linux WebKitGTK surface late | One-off load test in M0 (passed under CI software rendering), full matrix at M8 |
 | GitHub rate limits from polling | Conditional `/notifications` polling, GraphQL only on change, backoff |
-| `/notifications` doesn't accept the `gh` token | Test in M0.5; fall back to a slower GraphQL poll |
+| `/notifications` doesn't accept the `gh` token | Retired: it works under SSO, including 304s (M0.5). GraphQL poll stays the fallback |
 | Force-pushes break "since last review" | `git range-diff` fallback; old SHAs kept in `refs/docent/*` |
 | Verification runs hostile code from a PR | Separate opt-in on top of trust, never on fork PRs, allowlisted commands, verify worktree, stripped tokens, time limits, OS sandbox decision at M8 |
 | Inherit mode lets the harness auto-allow things Docent can't see | Off by default; plain warning in the UI; user-level settings only, never the repo's |
