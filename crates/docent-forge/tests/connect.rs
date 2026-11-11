@@ -259,3 +259,32 @@ async fn errors_never_carry_the_token() {
     );
     assert!(!shown.contains("gho_secret_a"), "token leaked: {shown}");
 }
+
+#[tokio::test]
+async fn the_token_does_not_follow_a_redirect_to_another_host() {
+    let gh = FakeGh::with_tokens(&[("github.com", "gho_secret_a")]);
+    let elsewhere = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(USER_JSON, "application/json"))
+        .mount(&elsewhere)
+        .await;
+    let api = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/user"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("location", format!("{}/user", elsewhere.uri())),
+        )
+        .mount(&api)
+        .await;
+    let accounts = accounts_against(vec![("github.com", &api)]);
+
+    let _ = accounts.connect("github.com", &gh.cli()).await;
+
+    let received = elsewhere.received_requests().await.expect("recording on");
+    assert!(!received.is_empty(), "the redirect was not followed");
+    assert!(
+        received.iter().all(|r| !r.headers.contains_key("authorization")),
+        "token followed the redirect: {:?}",
+        received.iter().map(|r| &r.headers).collect::<Vec<_>>()
+    );
+}
