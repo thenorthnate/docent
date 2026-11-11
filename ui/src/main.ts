@@ -1,4 +1,14 @@
 import { createApp } from "vue";
+import { createPinia } from "pinia";
+import { createWebHashHistory } from "vue-router";
 import App from "./App.vue";
+import { createAppRouter } from "./router";
+import { followSystemTheme } from "./theme";
+import "./style.css";
 
-createApp(App).mount("#app");
+followSystemTheme();
+
+createApp(App)
+  .use(createAppRouter(createWebHashHistory()))
+  .use(createPinia())
+  .mount("#app");
