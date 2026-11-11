@@ -5,7 +5,6 @@ use std::fmt;
 /// Held in memory only. It has no `Display` and no `Serialize`, and its
 /// `Debug` is redacted, so it cannot reach the UI, a log line or a file by
 /// accident. Only this crate can read the secret.
-#[derive(Clone, PartialEq, Eq)]
 pub struct Token(String);
 
 impl Token {

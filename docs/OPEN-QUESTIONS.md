@@ -161,3 +161,10 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | Linux CI | Switches from `cargo check` to the full `just check` once platform-specific Rust lands |
 | Playwright smoke flows | Set up once M1 has an inbox → PR → diff flow |
 | `release-please` and the app icon | At M8, before the first release |
+
+### Added while connecting GitHub hosts (#12)
+
+| Topic | Decision |
+|---|---|
+| When the `gh` token is read | When you connect a host, not at startup. Connected hosts aren't remembered yet, so you reconnect after a restart. Remembering them (host names only, never tokens) comes with the first slice that persists settings |
+| Login shell environment | Only `PATH` is read from the login shell, and only its absolute entries. It is passed to child processes explicitly; Docent's own environment is not changed |

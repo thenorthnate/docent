@@ -17,19 +17,18 @@ struct AppState {
 }
 
 impl AppState {
+    /// `gh` on the login shell's `PATH`. Only a `PATH` the shell actually
+    /// reported is kept; after a failure (say, a slow shell) the next
+    /// connect asks again.
     async fn gh(&self) -> GhCli {
-        let path = self
-            .child_path
-            .get_or_init(|| async {
-                let shell =
-                    std::env::var_os("SHELL").map_or_else(|| "/bin/zsh".into(), PathBuf::from);
-                match shell_env::login_shell_path(&shell, Duration::from_secs(10)).await {
-                    Some(path) => path,
-                    None => shell_env::fallback_path(std::env::var_os("PATH")),
-                }
-            })
-            .await;
-        GhCli::new(path.clone())
+        if let Some(path) = self.child_path.get() {
+            return GhCli::new(path.clone());
+        }
+        let shell = std::env::var_os("SHELL").map_or_else(|| "/bin/zsh".into(), PathBuf::from);
+        match shell_env::login_shell_path(&shell, Duration::from_secs(10)).await {
+            Some(path) => GhCli::new(self.child_path.get_or_init(|| async { path }).await.clone()),
+            None => GhCli::new(shell_env::fallback_path(std::env::var_os("PATH"))),
+        }
     }
 }
 

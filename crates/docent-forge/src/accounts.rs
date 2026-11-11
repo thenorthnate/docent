@@ -20,8 +20,18 @@ struct Account {
     token: Token,
 }
 
-/// The connected forge hosts. Held in memory only: tokens are fetched from
-/// `gh` again on every launch and never written to disk.
+impl Account {
+    fn summary(&self, host: &Host) -> AccountSummary {
+        AccountSummary {
+            host: host.as_str().to_string(),
+            login: self.login.clone(),
+        }
+    }
+}
+
+/// The connected forge hosts. Held in memory only, so nothing is written to
+/// disk and the user reconnects after a restart (remembering hosts across
+/// launches is a later slice).
 pub struct Accounts {
     api_base: ApiBase,
     by_host: Mutex<BTreeMap<Host, Account>>,
@@ -56,11 +66,9 @@ impl Accounts {
         let host = Host::parse(host)?;
         let token = gh.token(&host).await?;
         let login = github::current_login(&host, &(self.api_base)(&host), &token).await?;
-        let summary = AccountSummary {
-            host: host.as_str().to_string(),
-            login: login.clone(),
-        };
-        self.lock().insert(host, Account { login, token });
+        let account = Account { login, token };
+        let summary = account.summary(&host);
+        self.lock().insert(host, account);
         Ok(summary)
     }
 
@@ -68,10 +76,7 @@ impl Accounts {
     pub fn list(&self) -> Vec<AccountSummary> {
         self.lock()
             .iter()
-            .map(|(host, account)| AccountSummary {
-                host: host.as_str().to_string(),
-                login: account.login.clone(),
-            })
+            .map(|(host, account)| account.summary(host))
             .collect()
     }
 

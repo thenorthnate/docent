@@ -24,7 +24,15 @@ pub async fn login_shell_path(shell: &Path, timeout: Duration) -> Option<OsStrin
     }
     let stdout = String::from_utf8(output.stdout).ok()?;
     let path = stdout.split(MARKER).nth(1)?;
-    (!path.is_empty()).then(|| OsString::from(path))
+    // Relative entries (`.`, `bin`, an empty entry) would resolve against the
+    // app's working directory, so only absolute ones are kept.
+    let dirs: Vec<_> = std::env::split_paths(path)
+        .filter(|dir| dir.is_absolute())
+        .collect();
+    if dirs.is_empty() {
+        return None;
+    }
+    std::env::join_paths(dirs).ok()
 }
 
 const MARKER: &str = "__DOCENT_PATH__";
@@ -98,6 +106,21 @@ mod tests {
         let path = login_shell_path(&shell, SECOND).await;
 
         assert_eq!(path, Some(OsString::from("/opt/homebrew/bin:/usr/bin")));
+    }
+
+    /// A relative entry would make `gh` resolve against the app's working
+    /// directory, so only absolute directories are kept.
+    #[tokio::test]
+    async fn drops_relative_path_entries() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let shell = fake_shell(
+            &dir,
+            "PATH=.:bin:/usr/bin::./x:/opt/homebrew/bin\nexport PATH\nshift\nexec /bin/sh -c \"$1\"\n",
+        );
+
+        let path = login_shell_path(&shell, SECOND).await;
+
+        assert_eq!(path, Some(OsString::from("/usr/bin:/opt/homebrew/bin")));
     }
 
     #[tokio::test]

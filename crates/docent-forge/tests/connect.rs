@@ -272,7 +272,8 @@ async fn the_token_does_not_follow_a_redirect_to_another_host() {
     Mock::given(method("GET"))
         .and(path("/user"))
         .respond_with(
-            ResponseTemplate::new(302).insert_header("location", format!("{}/user", elsewhere.uri())),
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/user", elsewhere.uri())),
         )
         .mount(&api)
         .await;
@@ -283,7 +284,9 @@ async fn the_token_does_not_follow_a_redirect_to_another_host() {
     let received = elsewhere.received_requests().await.expect("recording on");
     assert!(!received.is_empty(), "the redirect was not followed");
     assert!(
-        received.iter().all(|r| !r.headers.contains_key("authorization")),
+        received
+            .iter()
+            .all(|r| !r.headers.contains_key("authorization")),
         "token followed the redirect: {:?}",
         received.iter().map(|r| &r.headers).collect::<Vec<_>>()
     );
