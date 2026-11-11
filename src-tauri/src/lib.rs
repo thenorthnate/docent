@@ -1,4 +1,8 @@
-/// The app version, as built. Shown in the UI so a bug report can name it.
+/// The app version, shown in the UI so a bug report can name it.
+///
+/// `env!` reads `CARGO_PKG_VERSION` at compile time. Cargo sets it from the
+/// workspace `version` in `Cargo.toml`, and the string is baked into the
+/// binary, so the user's environment at runtime plays no part.
 #[tauri::command]
 fn app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
