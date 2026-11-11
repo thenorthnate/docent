@@ -15,7 +15,9 @@ impl Host {
                 && label.len() <= 63
                 && !label.starts_with('-')
                 && !label.ends_with('-')
-                && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
         };
         if host.len() > 253 || !host.split('.').all(label_ok) {
             return Err(ConnectError::InvalidHost(input.to_string()));

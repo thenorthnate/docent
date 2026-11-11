@@ -114,14 +114,26 @@ async fn two_hosts_stay_connected_together_each_with_its_own_token() {
     // wrong host fails the connect.
     let public = github_for("gho_secret_a", "octocat").await;
     let enterprise = github_for("gho_secret_b", "mona").await;
-    let accounts = accounts_against(vec![("github.com", &public), ("ghe.corp.test", &enterprise)]);
+    let accounts = accounts_against(vec![
+        ("github.com", &public),
+        ("ghe.corp.test", &enterprise),
+    ]);
 
-    accounts.connect("github.com", &gh.cli()).await.expect("github.com");
-    accounts.connect("GHE.corp.test", &gh.cli()).await.expect("enterprise");
+    accounts
+        .connect("github.com", &gh.cli())
+        .await
+        .expect("github.com");
+    accounts
+        .connect("GHE.corp.test", &gh.cli())
+        .await
+        .expect("enterprise");
 
     assert_eq!(
         accounts.list(),
-        vec![summary("ghe.corp.test", "mona"), summary("github.com", "octocat")]
+        vec![
+            summary("ghe.corp.test", "mona"),
+            summary("github.com", "octocat")
+        ]
     );
 }
 
@@ -145,11 +157,15 @@ async fn gh_not_logged_in_says_how_to_log_in() {
     let gh = FakeGh::with_tokens(&[("github.com", "gho_secret_a")]);
     let accounts = Accounts::with_api_base(|_| unreachable!("no API call without a token"));
 
-    let err = accounts.connect("ghe.corp.test", &gh.cli()).await.unwrap_err();
+    let err = accounts
+        .connect("ghe.corp.test", &gh.cli())
+        .await
+        .unwrap_err();
 
     assert_eq!(err, ConnectError::NotLoggedIn("ghe.corp.test".to_string()));
     assert!(
-        err.to_string().contains("gh auth login --hostname ghe.corp.test"),
+        err.to_string()
+            .contains("gh auth login --hostname ghe.corp.test"),
         "{err}"
     );
     assert!(accounts.list().is_empty());
@@ -172,7 +188,11 @@ async fn a_rejected_token_says_to_refresh_the_gh_login() {
     let err = accounts.connect("github.com", &gh.cli()).await.unwrap_err();
 
     assert_eq!(err, ConnectError::TokenRejected("github.com".to_string()));
-    assert!(err.to_string().contains("gh auth refresh --hostname github.com"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("gh auth refresh --hostname github.com"),
+        "{err}"
+    );
     assert!(accounts.list().is_empty());
 }
 
@@ -183,12 +203,21 @@ async fn hostile_hosts_never_reach_gh() {
     let gh = FakeGh::with_tokens(&[("github.com", "gho_secret_a")]);
     let accounts = Accounts::with_api_base(|_| unreachable!("no API call for a bad host"));
 
-    for hostile in ["--help", "-h github.com", "github.com --version", "https://evil.test"] {
+    for hostile in [
+        "--help",
+        "-h github.com",
+        "github.com --version",
+        "https://evil.test",
+    ] {
         let err = accounts.connect(hostile, &gh.cli()).await.unwrap_err();
         assert_eq!(err, ConnectError::InvalidHost(hostile.to_string()));
     }
 
-    assert!(gh.invocations().is_empty(), "gh ran: {:?}", gh.invocations());
+    assert!(
+        gh.invocations().is_empty(),
+        "gh ran: {:?}",
+        gh.invocations()
+    );
 }
 
 #[tokio::test]
@@ -197,7 +226,10 @@ async fn the_token_is_never_in_what_the_ui_or_logs_can_see() {
     let api = github_for("gho_secret_a", "octocat").await;
     let accounts = accounts_against(vec![("github.com", &api)]);
 
-    let connected = accounts.connect("github.com", &gh.cli()).await.expect("connect");
+    let connected = accounts
+        .connect("github.com", &gh.cli())
+        .await
+        .expect("connect");
 
     let visible = [
         serde_json::to_string(&connected).expect("serialize summary"),
