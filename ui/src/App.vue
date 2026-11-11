@@ -1,48 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { RouterView } from "vue-router";
+import ActivityBar from "@/components/ActivityBar.vue";
+import { useShellStore } from "@/stores/shell";
 
-const version = ref<string | null>(null);
-const versionFailed = ref(false);
-
-onMounted(async () => {
-  try {
-    version.value = await invoke<string>("app_version");
-  } catch (error) {
-    versionFailed.value = true;
-    console.error("Could not read the app version", error);
-  }
-});
+const shell = useShellStore();
 </script>
 
 <template>
-  <main class="container">
-    <h1>Docent</h1>
-    <p v-if="version">
-      v{{ version }}
-    </p>
-    <p v-else-if="versionFailed">
-      version unknown
-    </p>
-  </main>
+  <div class="flex h-screen bg-background text-foreground">
+    <ActivityBar />
+    <aside
+      v-if="shell.drawerOpen"
+      data-testid="drawer"
+      class="w-64 shrink-0 overflow-y-auto border-r bg-sidebar text-sidebar-foreground"
+    >
+      <RouterView name="drawer" />
+    </aside>
+    <main class="min-w-0 flex-1 overflow-y-auto">
+      <RouterView />
+    </main>
+  </div>
 </template>
-
-<style>
-:root {
-  font-family: system-ui, sans-serif;
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-}
-
-.container {
-  padding-top: 10vh;
-  text-align: center;
-}
-</style>
