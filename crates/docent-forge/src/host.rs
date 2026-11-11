@@ -23,6 +23,15 @@ impl Host {
         Ok(Self(host))
     }
 
+    /// The REST API base: github.com's own API host, or `/api/v3` on a
+    /// GitHub Enterprise Server.
+    pub fn api_base(&self) -> String {
+        match self.0.as_str() {
+            "github.com" => "https://api.github.com".to_string(),
+            host => format!("https://{host}/api/v3"),
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -40,6 +49,13 @@ mod tests {
             "github.example.com"
         );
         assert_eq!(Host::parse("ghe-1.corp").unwrap().as_str(), "ghe-1.corp");
+    }
+
+    #[test]
+    fn api_base_is_api_github_com_or_the_enterprise_v3_path() {
+        let base = |h: &str| Host::parse(h).unwrap().api_base();
+        assert_eq!(base("github.com"), "https://api.github.com");
+        assert_eq!(base("ghe.corp.test"), "https://ghe.corp.test/api/v3");
     }
 
     /// The host becomes an argument to `gh`, so nothing that could read as a
