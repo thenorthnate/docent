@@ -98,7 +98,7 @@ M0.5 answered 1, 2, 3, 6 and 7 (see Resolved). These still need a real test. The
 | Steering source | Extracted after you submit, from new comments you wrote yourself; only rules that generalize |
 | Steering approval | Staged as suggestions; nothing applies without your approval |
 | Steering scope | Per repo by default; promote to global |
-| Steering visibility | Lens chip counts, Repo Settings → Lenses & steering, rule citations on findings |
+| Steering visibility | Rule counts on the agent panel's lens groups, Repo Settings → Lenses & steering, rule citations on findings |
 | Steering and cache | Part of `lens_hash`; never re-runs existing results, shows "Re-run" |
 | Duplicate steering | Merge with existing rule offered; token cost per lens shown |
 | Moved code | Detected in `docent-git` within and across files; left out of lens prompts; M4 |
@@ -131,3 +131,17 @@ See [`spikes/work-laptop-proof.md`](spikes/work-laptop-proof.md).
 | 3 | Kiro workspace trust under ACP | **Not applied** on the default (v2) engine. `AGENTS.md` and steering injections ran commands; a workspace `kiro_default` agent replaced the default and its prompt, hooks and MCP server ran. Docent always names its agent and fails if it doesn't load (`PLAN.md` 5.6). Follow-ups 3b–3d |
 | 6 | `gh` token under SSO | Every call Docent needs works, including `/notifications` with a 304 on a conditional repeat |
 | 7 | Kiro usage reporting | No `usage_update`; usage comes in `_meta` and `_kiro.dev/metadata`. Per-agent usage adapter (`PLAN.md` 5.5). Shape is 7b |
+
+### Added by the UI mockups spike
+
+See [`spikes/ui-mockups.md`](spikes/ui-mockups.md).
+
+| Topic | Decision |
+|---|---|
+| App shell | Activity bar with drawers (VS Code style), over browser-style tabs. Steering and Bookmarks on the rail |
+| Inbox layout | Mail split: sections in the drawer, PR list, preview pane |
+| PR view layout | Three panes: file tree in the drawer, diff, agent panel. Findings only in the agent panel |
+| Findings in the agent panel | Grouped by lens, each with an on/off switch; expanded by default, collapsible |
+| Comment kind | New: you pick General or a lens for each comment; steering files the candidate under it instead of guessing |
+| Explore from a PR | Opens the PR's head branch with changed files and lines marked, not the default branch |
+| Untrusted PR panel | Your own comments stay visible; the trust card replaces the lens groups |
