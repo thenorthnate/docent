@@ -6,7 +6,7 @@ Docent is a desktop app for AI-guided code review and exploration: Tauri 2, a Ru
 - **Decisions and unknowns:** [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md).
 - **Process rules** (slices, PR size, branches, commits, review, dependencies): [`CONTRIBUTING.md`](CONTRIBUTING.md). This file covers how an agent works within them.
 
-Status: designed, not yet built. `just check` and CI arrive with the scaffold PR. Until then there is nothing to run.
+Status: scaffold only. `just setup` installs dependencies, `just check` runs every gate CI runs, and `just dev` opens the app. The app shell is in `src-tauri/` and the Vue app in `ui/` (the pnpm package `docent-ui`). The `docent-*` crates are added under `crates/` by the first slice that needs each one.
 
 ## Working a slice
 
@@ -48,6 +48,7 @@ These are already decided. Add a convention here in the PR that first settles it
 - Rust library crates define typed errors with `thiserror`. Use `unwrap`/`expect` only in tests and in startup code where failure should abort, and give `expect` a message saying why.
 - All `git` invocations go through `docent-git`. All agent processes go through `docent-agents`. One module owns each kind of child process, so environment scrubbing and logging live in one place.
 - Treat agent output as untrusted input: validate it against its schema and check every reported line against the real file.
+- UI tests use Vitest and Vue Test Utils on happy-dom, next to the code as `*.test.ts`. Mock Tauri commands with `mockIPC` from `@tauri-apps/api/mocks`, never a hand-rolled `invoke` stub.
 - Prefer the standard library and existing dependencies. A new dependency needs the justification described in [CONTRIBUTING.md](CONTRIBUTING.md#dependencies).
 
 ## When the design changes
