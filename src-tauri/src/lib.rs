@@ -1,3 +1,55 @@
+mod shell_env;
+
+use std::ffi::OsString;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use docent_forge::{AccountSummary, Accounts, ConnectError, GhCli};
+use tauri::State;
+use tokio::sync::OnceCell;
+
+/// Process-wide state. Tokens live only in `accounts`, in memory.
+#[derive(Default)]
+struct AppState {
+    accounts: Accounts,
+    /// The `PATH` that child processes use, read once from the login shell.
+    child_path: OnceCell<OsString>,
+}
+
+impl AppState {
+    async fn gh(&self) -> GhCli {
+        let path = self
+            .child_path
+            .get_or_init(|| async {
+                let shell =
+                    std::env::var_os("SHELL").map_or_else(|| "/bin/zsh".into(), PathBuf::from);
+                match shell_env::login_shell_path(&shell, Duration::from_secs(10)).await {
+                    Some(path) => path,
+                    None => shell_env::fallback_path(std::env::var_os("PATH")),
+                }
+            })
+            .await;
+        GhCli::new(path.clone())
+    }
+}
+
+/// Connects a GitHub host with the token from the user's `gh` login. The
+/// token stays in the Rust core; the UI gets the host and login only.
+#[tauri::command]
+async fn connect_host(
+    host: String,
+    state: State<'_, AppState>,
+) -> Result<AccountSummary, ConnectError> {
+    let gh = state.gh().await;
+    state.accounts.connect(&host, &gh).await
+}
+
+/// The connected hosts, without their tokens.
+#[tauri::command]
+fn list_accounts(state: State<'_, AppState>) -> Vec<AccountSummary> {
+    state.accounts.list()
+}
+
 /// The app version, shown in the UI so a bug report can name it.
 ///
 /// `env!` reads `CARGO_PKG_VERSION` at compile time. Cargo sets it from the
@@ -11,7 +63,12 @@ fn app_version() -> &'static str {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![app_version])
+        .manage(AppState::default())
+        .invoke_handler(tauri::generate_handler![
+            app_version,
+            connect_host,
+            list_accounts
+        ])
         .run(tauri::generate_context!())
         .expect("Tauri failed to start the app; nothing can run without it");
 }

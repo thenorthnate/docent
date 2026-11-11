@@ -768,9 +768,13 @@ dependencies = [
 name = "docent"
 version = "0.1.0"
 dependencies = [
+ "docent-forge",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
