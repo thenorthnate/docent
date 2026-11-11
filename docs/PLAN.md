@@ -39,9 +39,9 @@
 | Diff/code viewer | CodeMirror 6 (`@codemirror/merge`), fed git's own hunks. Chosen by the M0 spike ([write-up](spikes/viewer-choice.md)) |
 | Agent integration | ACP client behind an `AgentBackend` interface, so the way Docent talks to agents can change |
 | Forges | GitHub first (`Forge` interface); GitLab in 0.2 |
-| Forge auth | Token from `gh auth token --hostname <host>`, held in memory. PAT in the keychain as fallback. Device flow at M8 |
+| Forge auth | Token from `gh auth token --hostname <host>`, held in memory. PAT in the keychain as fallback and device flow, both at M8 |
 | Issue tracking | `IssueTracker` interface, separate from `Forge`. Jira first, through the agent's MCP server |
-| Local repos | Your existing clones, or a normal full clone made by Docent; one git worktree per PR |
+| Local repos | Your existing clones, or a normal full clone made by Docent using your own git credentials; one git worktree per PR |
 | Inbox scope | Watched repos only |
 | Hostile content | PR content is hostile until you trust the repo, branch or PR |
 | Agent permissions | Best-effort read-only, with an explicit MCP tool allowlist per profile. Per profile: **Docent-managed** (default) or **Inherit harness settings** (user level only) |
@@ -134,7 +134,7 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 ## 4. Core concepts
 
 - **Watched repo**: a forge repo you've told Docent to pay attention to. Everything else stays out of the inbox and notifications.
-- **Repo binding**: a watched repo mapped to a local clone. **Bind** points at an existing clone; **Clone** makes a normal full clone into a folder you pick. Diffs always come from local git.
+- **Repo binding**: a watched repo mapped to a local clone. **Bind** points at an existing clone; **Clone** makes a normal full clone into a folder you pick, using your existing git credentials (for example `gh auth setup-git`). Docent never hands a forge token to git. Diffs always come from local git.
 - **Worktree**: a git worktree Docent creates under its own data dir, in detached HEAD at the PR's head SHA. Agents run with `cwd` set to it, so they see the full repo at the reviewed commit. Your working tree is untouched, though your clone's `.git` gains `refs/docent/*` refs and worktree metadata.
 - **Trust**: your local decision that a repo, branch or PR may be given to agents and linters (see 5.6).
 - **Agent profile**: how to launch an ACP agent (command, args, env), plus its MCP tool allowlist. Assigned per forge account, with optional per-repo overrides. If nothing matches, no agent runs and Docent asks you to choose.
@@ -153,7 +153,7 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 ### 5.1 Accounts and connection
 
 - **MVP**: Docent runs `gh auth token --hostname <host>` at startup and holds the token in memory. If `gh` already reaches your SSO org, no OAuth app registration or org approval is needed. API calls are made directly from Rust.
-- **Fallback**: a personal access token stored in the OS keychain.
+- **M8, fallback**: a personal access token stored in the OS keychain, for machines without `gh`. Moved out of M1, since the first target has `gh`.
 - **M8**: OAuth device flow for github.com users who don't have `gh`. Each GitHub Enterprise Server instance would need its own registered app, so GHES uses `gh`, a PAT, or a user-supplied client ID.
 - Multiple accounts at once, e.g. work and personal.
 
@@ -163,7 +163,8 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load
 - Sections: **Review requested**, **Assigned**, **Authored by me**, **Mentioned**, **Pinned**, all limited to watched repos.
 - One quiet line for what's filtered out, e.g. "2 review requests in unwatched repos", with a **Watch** button.
 - A watched repo with no local clone shows **Bind** and **Clone**.
-- Per row: title, repo, author, CI status, review state, size, age, and an **"updated since your last review"** badge with counts (`+3 commits · 5 comments`).
+- Per row: title, repo, author, CI status, review state, size and age.
+- **M4**: an **"updated since your last review"** badge with counts (`+3 commits · 5 comments`). It needs the review state from 5.3, which arrives in M4.
 - Filters and saved views. Keyboard navigation (j/k, enter).
 
 ### 5.3 Change tracking
@@ -200,6 +201,8 @@ The app shell is an **activity bar** down the far left: Inbox, Review, Explore, 
 
 - Overview tab: description, checks, timeline, and an AI summary from the explainer lens.
 - Diff modes: unified or split, full PR or since-last-review, ignore-whitespace. Moved code shows as moved (see 5.14).
+- The viewer shows git's hunks exactly. CodeMirror's `makePresentable` pass can slide a hunk by a line or merge two close hunks (2 of 133 files in M0), so Docent wraps the changes it passes in, or upstreams an option to skip that pass, when the viewer lands in M1.
+- Findings on deleted lines in unified view: CodeMirror can't mark individual deleted lines there, because it owns their DOM (M0). M3 decides between markers in split view only and a marker on the nearest new-side line.
 - Show/hide findings by lens and severity.
 - Your pending comments have their own gutter marker, and the file tree counts them beside agent findings.
 - Findings appear only in the agent panel (plus gutter dots and tree counts), **grouped by lens**. Each group shows its steering count (`Style · 4 rules`), its finding count, and an on/off switch for this PR (a switched-off lens offers **Run anyway** and "apply to repo"). Groups start expanded and can be collapsed; a collapsed group shows how many findings it hides. Switching a lens off also hides its gutter dots.
@@ -272,6 +275,7 @@ Fork PRs always need **Trust this PR**, even in a trusted repo, and that resets 
 - **All agents**: forge tokens stripped from the environment at spawn; Docent denies any permission request outside the policy.
 - **MCP tools**: denied unless on the profile's allowlist, including any new tools a server adds later. Lens sessions get Jira **read** tools only (get, search), so injected content can't write to Jira.
 - A full OS sandbox around the agent process is decided at M8, before public release.
+- **Content Security Policy**: the scaffold ships with the generator's `csp: null`. Forge content (PR bodies, comments) and agent output are hostile, so a real CSP lands with the first M1 slice that renders them as markdown, and they are never rendered as raw HTML.
 
 **Permission modes** (per agent profile):
 
@@ -446,16 +450,16 @@ Each milestone is a set of short-lived branches off `main`.
 | **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. **Done: go** ([write-up](spikes/work-laptop-proof.md)). The restricted-agent questions move to M2. |
 | **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. **Done: CodeMirror 6** ([write-up](spikes/viewer-choice.md)). |
 | **UI** | **UI mockups** | Throwaway mockups of the shell, inbox, PR view, Explore, Projects and Settings, to fix the layout before M1. **Done: activity bar, mail-split inbox, three-pane review** ([write-up](spikes/ui-mockups.md)). |
-| **M1** | GitHub inbox + read-only PR view | Auth, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle |
+| **M1** | GitHub inbox + read-only PR view | Auth via `gh`, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle, CSP. Tracked in [#10](https://github.com/thenorthnate/docent/issues/10) |
 | **M2** | Explain + trust + agent settings | Trust model, profiles and detection, tool policy, Explain, PR summary, Chat, activity drawer |
 | **M3** | Review lenses | Bugs, Style, Modernize & lint; findings in gutter and file tree; fingerprints; caching; lens files; lens management (global library, repo lens sets, custom lenses, tombstones, toggles, Run anyway) |
-| **M4** | Commenting, reviews, since-last-review | Pending review, promote finding, submit, threads, review state, interdiff/range-diff, new-comment highlighting, moved-code detection, steering (staging, scope, UI, citations) |
+| **M4** | Commenting, reviews, since-last-review | Pending review, promote finding, submit, threads, review state, "updated since your last review" inbox badge, interdiff/range-diff, new-comment highlighting, moved-code detection, steering (staging, scope, UI, citations) |
 | **M4b** | Verification + permission modes | Docent-managed and Inherit modes, Trust + allow verification, verify worktree, command detection and allowlist, limits |
 | **M5** | Background tracking | Poller, tray, OS notifications, viewed-file sync |
 | **M6** | Explore | Any-ref worktrees, file browser, on-demand lenses, saved findings, self-review, Trace, bookmarks |
 | **M6b** | Projects | Multi-repo view and cross-repo Trace |
 | **Jira** | Ticket writes | Create issue and comment via the agent's MCP server |
-| **M8** | Release 0.1 | GitHub issues from findings, device-flow auth, full OS build matrix, paid signing (macOS notarized, Windows signed, Linux AppImage/deb/rpm), auto-update, OS sandbox decision, docs site, contributor guide |
+| **M8** | Release 0.1 | GitHub issues from findings, device-flow auth, PAT-in-keychain fallback, custom app icon, `release-please`, full OS build matrix, paid signing (macOS notarized, Windows signed, Linux AppImage/deb/rpm), auto-update, OS sandbox decision, docs site, contributor guide |
 | **0.2** | GitLab | Forge implementation |
 
 **M0.5 gate:** M1 can't start until the Explain answer is useful on real work code and you decide it's worth continuing. If Kiro is blocked, swap the `AgentBackend` implementation or get the waiver first. If Explain isn't useful without ticket text, fix the Jira path before M1.
@@ -473,14 +477,14 @@ Each milestone is a set of short-lived branches off `main`.
 - **Hostile-repo fixtures**: repos with malicious `.kiro/`, `.claude/`, `.mcp.json`, `.docent/lenses/` and linter configs, proving nothing runs before trust, and no build or test runs without **allow verification** or on a fork PR.
 - **Moved-code fixtures**: `docent-git` tests for moves within a file, across files, and moved-with-changes.
 - **Mock agent** also scripts out-of-allowlist shell requests and write requests outside the verify worktree, which must be denied.
-- **Frontend**: Vitest + Vue Test Utils for components and stores. Playwright for a few smoke flows against the Vite dev build with mocked `invoke`.
-- **CI**: GitHub Actions on macOS arm64 (`cargo fmt/clippy/test`, `pnpm lint/test`, `tauri build`), plus a cheap Linux `cargo check`. The full OS matrix arrives at M8.
+- **Frontend**: Vitest + Vue Test Utils for components and stores. Playwright for a few smoke flows against the Vite dev build with mocked `invoke`, set up once M1 has a flow worth smoking (inbox → open PR → diff). Not set up yet.
+- **CI**: GitHub Actions on macOS arm64 (`just check` and `tauri build`), plus a cheap Linux `cargo check`. The Linux job switches to the full `just check` once platform-specific Rust lands (`docent-git`, process spawning). The full OS matrix arrives at M8.
 
 ## 9. Open-source hygiene
 
 - MIT license (already present). Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, `SECURITY.md` (token handling, trust model, agent limits).
 - `AGENTS.md` / `CLAUDE.md` describing repo conventions.
-- Conventional commits + `release-please` for changelogs and versioning.
+- Conventional commits + `release-please` for changelogs and versioning. `release-please` is set up before the first release (M8); until then, squash-merge titles are written as conventional commits so the history is ready for it.
 - No telemetry by default.
 
 ## 10. Risks and mitigations

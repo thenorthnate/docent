@@ -25,6 +25,7 @@ M0.5 answered 1, 2, 3, 6 and 7 (see Resolved). These still need a real test. The
 
 9. **OS sandbox** around the agent process: decide at M8, before public release. Windows is the weak spot.
 10. **Trademark search** on Docent: before M8.
+12. **Findings on deleted lines in unified view**: CodeMirror can't mark individual deleted lines there (M0). Decide in M3: markers in split view only, or a marker on the nearest new-side line.
 11. **Parked ideas**, to revisit after 0.1:
     - E1: review checklist per PR
     - E2: risk heatmap in the file tree
@@ -145,3 +146,18 @@ See [`spikes/ui-mockups.md`](spikes/ui-mockups.md).
 | Comment kind | New: you pick General or a lens for each comment; steering files the candidate under it instead of guessing |
 | Explore from a PR | Opens the PR's head branch with changed files and lines marked, not the default branch |
 | Untrusted PR panel | Your own comments stay visible; the trust card replaces the lens groups |
+
+### Added while planning M1
+
+From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) and the follow-ups of earlier PRs.
+
+| Topic | Decision |
+|---|---|
+| PAT fallback | Moved from M1 to M8, alongside device flow. The first target has `gh` |
+| "Updated since your last review" badge | Moved from M1 to M4, where review state arrives |
+| Clone credentials | Clone uses your existing git credentials; Docent never hands a forge token to git |
+| Hunk fidelity | The M1 viewer stops CodeMirror's `makePresentable` from sliding or merging git's hunks |
+| Content Security Policy | A real CSP replaces `csp: null` with the first M1 slice that renders forge or agent content |
+| Linux CI | Switches from `cargo check` to the full `just check` once platform-specific Rust lands |
+| Playwright smoke flows | Set up once M1 has an inbox → PR → diff flow |
+| `release-please` and the app icon | At M8, before the first release |
