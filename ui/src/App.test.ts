@@ -60,11 +60,13 @@ describe("App shell", () => {
 
   it("clicking the active icon closes its drawer and keeps the page", async () => {
     const { wrapper, router } = await mountApp("/review");
+    expect(railButton(wrapper, "Review").attributes("aria-expanded")).toBe("true");
 
     await railButton(wrapper, "Review").trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[data-testid="drawer"]').exists()).toBe(false);
+    expect(railButton(wrapper, "Review").attributes("aria-expanded")).toBe("false");
     expect(router.currentRoute.value.path).toBe("/review");
     expect(wrapper.get("main h1").text()).toBe("Review");
   });

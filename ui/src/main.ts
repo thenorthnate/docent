@@ -9,6 +9,6 @@ import "./style.css";
 followSystemTheme();
 
 createApp(App)
-  .use(createPinia())
   .use(createAppRouter(createWebHashHistory()))
+  .use(createPinia())
   .mount("#app");
