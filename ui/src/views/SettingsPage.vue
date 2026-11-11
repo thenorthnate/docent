@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import AccountsSection from "@/components/AccountsSection.vue";
 
 const version = ref<string | null>(null);
 const versionFailed = ref(false);
@@ -16,7 +17,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="p-6">
+  <div class="space-y-6 p-6">
     <h1 class="text-lg font-semibold">
       Settings
     </h1>
@@ -28,5 +29,6 @@ onMounted(async () => {
         Docent, version unknown
       </template>
     </p>
+    <AccountsSection />
   </div>
 </template>

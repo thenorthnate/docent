@@ -7,7 +7,11 @@ import App from "./App.vue";
 import { createAppRouter } from "./router";
 
 beforeEach(() => {
-  mockIPC((cmd) => (cmd === "app_version" ? "1.2.3" : undefined));
+  mockIPC((cmd) => {
+    if (cmd === "app_version") return "1.2.3";
+    if (cmd === "list_accounts") return [];
+    return undefined;
+  });
 });
 
 afterEach(() => {
