@@ -30,8 +30,7 @@ jobs:
       - uses: extractions/setup-just@v4
       - run: just setup
       - run: just check
-      - name: Build the app (no installer)
-        run: pnpm tauri build --no-bundle
+      - run: just build
 
   linux:
     name: cargo check (Linux)

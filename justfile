@@ -31,6 +31,10 @@ ui-typecheck:
 ui-test:
     pnpm --filter docent-ui test
 
+# Build the release app without an installer
+build:
+    pnpm tauri build --no-bundle
+
 # Install dependencies
 setup:
     pnpm install --frozen-lockfile
