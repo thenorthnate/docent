@@ -32,10 +32,11 @@ M0.5 (work-laptop proof) and M0 (viewer spike) are experiments that answer quest
 
 ## Follow-up work
 
-Work noticed during a PR but left out of it must be tracked somewhere it will be picked up. A list in a PR description is not tracking: it is forgotten once the PR merges. Before the PR is ready for review, put each item in one of two places:
+Work noticed during a PR but left out of it must be tracked somewhere it will be picked up. A list in a PR description is not tracking: it is forgotten once the PR merges. Before the PR is ready for review, put each item in the first of these places that fits:
 
 - **An existing issue** it belongs to. Add the details to the issue body, and add acceptance criteria if the item changes what "done" means.
-- **`PLAN.md`**, in the milestone or section where it belongs, changed in the same PR. Use this when no open issue fits, for example work for a later milestone that hasn't been broken into slices yet.
+- **A new issue in the current milestone**, when the work belongs in a milestone that has a tracking issue but no slice covers it. Write it like the milestone's other slice issues, and add it to the tracking issue's checklist. An agent drafts the issue and asks the maintainer before filing it, as for any slice (see [From milestone to PR](#from-milestone-to-pr)).
+- **`PLAN.md`**, in the milestone or section where it belongs, changed in the same PR. Use this for a milestone that hasn't been broken into slices yet.
 
 If the item changes a design decision, also record it in `OPEN-QUESTIONS.md`.
 

@@ -19,7 +19,7 @@ A **slice** is one GitHub issue, delivered as one draft PR within the [size budg
 5. **Review.** Run `/code-review` (or your harness's equivalent) on the branch. Fix each finding, or answer it under "Review notes" in the PR.
 6. **Hand over.** Complete every template section and leave the PR as a draft. Marking it ready and merging are the maintainer's calls.
 
-Stay inside the slice. When you notice work outside it, don't fix it here, and don't leave it in the PR description. Track it as [CONTRIBUTING.md](CONTRIBUTING.md#follow-up-work) describes: add it to the open issue it belongs to, or add it to `PLAN.md` in this PR. Push only to the slice branch. Once the maintainer has started reviewing, add new commits on top so they can see what changed since their review.
+Stay inside the slice. When you notice work outside it, don't fix it here, and don't leave it in the PR description. Track it as [CONTRIBUTING.md](CONTRIBUTING.md#follow-up-work) describes: add it to the open issue it belongs to; if it belongs in the current milestone but no slice covers it, draft a new issue for the milestone's tracking issue and ask the maintainer before filing it; otherwise add it to `PLAN.md` in this PR. Push only to the slice branch. Once the maintainer has started reviewing, add new commits on top so they can see what changed since their review.
 
 ## Tests
 
