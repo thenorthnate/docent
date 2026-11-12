@@ -16,13 +16,16 @@ describe("SettingsPage", () => {
       if (cmd === "app_version") {
         return "1.2.3";
       }
+      if (cmd === "list_accounts") {
+        return [];
+      }
       throw new Error(`unexpected command: ${cmd}`);
     });
 
     const wrapper = mount(SettingsPage);
     await flushPromises();
 
-    expect(calls).toEqual(["app_version"]);
+    expect(calls).toContain("app_version");
     expect(wrapper.text()).toContain("Docent v1.2.3");
   });
 
@@ -36,6 +39,7 @@ describe("SettingsPage", () => {
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("Settings");
+    expect(wrapper.get("h2").text()).toBe("Accounts");
     expect(wrapper.text()).toContain("version unknown");
   });
 });

@@ -36,7 +36,7 @@ Docent treats PR content as **hostile** until the user trusts the repo, branch o
 - trust gating: deciding whether agents, linters or repo config may run
 - agent permission and tool policy, including MCP allowlists and answers to ACP permission requests
 - forge token handling: acquiring, storing, and stripping tokens from child process environments
-- spawning agent and git processes
+- spawning agent, git and `gh` processes, and reading the login shell's `PATH`
 - verification: running commands and managing the verify worktree
 
 A PR touching any of these ticks the template's security box, includes a denial test, and contains nothing else. Add to this list when new code of this kind appears.
@@ -46,7 +46,7 @@ A PR touching any of these ticks the template's security box, includes a denial 
 These are already decided. Add a convention here in the PR that first settles it.
 
 - Rust library crates define typed errors with `thiserror`. Use `unwrap`/`expect` only in tests and in startup code where failure should abort, and give `expect` a message saying why.
-- All `git` invocations go through `docent-git`. All agent processes go through `docent-agents`. One module owns each kind of child process, so environment scrubbing and logging live in one place.
+- All `git` invocations go through `docent-git`. All agent processes go through `docent-agents`. All `gh` invocations go through `docent-forge`'s `gh` module. One module owns each kind of child process, so environment scrubbing and logging live in one place.
 - Treat agent output as untrusted input: validate it against its schema and check every reported line against the real file.
 - UI tests use Vitest and Vue Test Utils on happy-dom, next to the code as `*.test.ts`. Mock Tauri commands with `mockIPC` from `@tauri-apps/api/mocks`, never a hand-rolled `invoke` stub.
 - Prefer the standard library and existing dependencies. A new dependency needs the justification described in [CONTRIBUTING.md](CONTRIBUTING.md#dependencies).
