@@ -49,6 +49,14 @@ async function connect(wrapper: Awaited<ReturnType<typeof mountSection>>, host: 
 }
 
 describe("AccountsSection", () => {
+  it("says that only GitHub is supported for now", async () => {
+    mockCore({});
+
+    const wrapper = await mountSection();
+
+    expect(wrapper.text()).toContain("Only GitHub (github.com and GitHub Enterprise Server) is supported for now.");
+  });
+
   it("lists the hosts already connected", async () => {
     const core = mockCore({});
     core.connected.push({ host: "github.com", login: "octocat" });

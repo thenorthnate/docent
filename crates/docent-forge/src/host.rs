@@ -1,5 +1,15 @@
 use crate::ConnectError;
 
+/// The longest a single label (the part between dots) may be: 63 octets, as
+/// RFC 1035 §2.3.4 sets for DNS. Anything longer can't be a real host.
+const MAX_LABEL_LEN: usize = 63;
+
+/// The longest a whole host name may be in text form: 253 characters. DNS
+/// caps a name at 255 octets on the wire (RFC 1035 §2.3.4), and that count
+/// includes a length byte before the first label and the empty root label at
+/// the end, which leaves 253 for the dotted text.
+const MAX_HOST_LEN: usize = 253;
+
 /// A forge host name, such as `github.com` or a GitHub Enterprise host.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Host(String);
@@ -12,14 +22,14 @@ impl Host {
         let host = input.trim().to_ascii_lowercase();
         let label_ok = |label: &str| {
             !label.is_empty()
-                && label.len() <= 63
+                && label.len() <= MAX_LABEL_LEN
                 && !label.starts_with('-')
                 && !label.ends_with('-')
                 && label
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-')
         };
-        if host.len() > 253 || !host.split('.').all(label_ok) {
+        if host.len() > MAX_HOST_LEN || !host.split('.').all(label_ok) {
             return Err(ConnectError::InvalidHost(input.to_string()));
         }
         Ok(Self(host))

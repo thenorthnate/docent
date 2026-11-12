@@ -9,6 +9,9 @@ use tauri::State;
 use tokio::sync::OnceCell;
 
 /// Process-wide state. Tokens live only in `accounts`, in memory.
+///
+/// `Default` builds the startup value handed to Tauri's `.manage()`: no
+/// accounts yet (pointed at the real GitHub API) and no `PATH` read yet.
 #[derive(Default)]
 struct AppState {
     accounts: Accounts,

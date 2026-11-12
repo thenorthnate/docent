@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button";
 /** A connected host, as the Rust core reports it. It never includes the token. */
 type Account = { host: string; login: string };
 
+// Reactive component state: the template re-renders when any of these change.
+/** The connected hosts, as last read from the Rust core. */
 const accounts = ref<Account[]>([]);
+/** The host typed into the form, bound to the input with `v-model`. */
 const host = ref("github.com");
+/** True while a connect is in flight, to disable the button. */
 const connecting = ref(false);
+/** The last error to show, or null when there is none. */
 const error = ref<string | null>(null);
 
 function messageOf(err: unknown): string {
@@ -55,6 +60,7 @@ onMounted(refresh);
     </h2>
     <p class="text-sm text-muted-foreground">
       Docent uses the token from your GitHub CLI (<code>gh</code>) login and keeps it in memory only.
+      Only GitHub (github.com and GitHub Enterprise Server) is supported for now.
     </p>
     <ul
       v-if="accounts.length"
