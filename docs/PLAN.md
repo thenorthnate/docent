@@ -127,7 +127,7 @@ Splitting the Rust side into small crates keeps the forge, git and agent logic t
 | Settings files | `tauri-plugin-store` or TOML in app config dir | Simple |
 | Logging | `tracing` + `tauri-plugin-log` | Debuggable agent sessions |
 
-Apps launched from Finder don't inherit your shell's `PATH`, so Docent must load the login shell's environment to find `gh`, `git` and `kiro-cli`.
+Apps launched from Finder don't inherit your shell's `PATH`, so Docent reads `PATH` from the login shell to find `gh`, `git` and `kiro-cli`. The probe uses POSIX syntax, so a fish login shell falls back to the app's `PATH` plus Homebrew's directories until M8.
 
 ---
 
@@ -459,7 +459,7 @@ Each milestone is a set of short-lived branches off `main`.
 | **M6** | Explore | Any-ref worktrees, file browser, on-demand lenses, saved findings, self-review, Trace, bookmarks |
 | **M6b** | Projects | Multi-repo view and cross-repo Trace |
 | **Jira** | Ticket writes | Create issue and comment via the agent's MCP server |
-| **M8** | Release 0.1 | GitHub issues from findings, device-flow auth, PAT-in-keychain fallback, custom app icon, `release-please`, full OS build matrix, paid signing (macOS notarized, Windows signed, Linux AppImage/deb/rpm), auto-update, OS sandbox decision, docs site, contributor guide |
+| **M8** | Release 0.1 | GitHub issues from findings, device-flow auth, PAT-in-keychain fallback, clearer `gh` failures (tell "not logged in" apart from other errors), login shells beyond bash and zsh (fish), custom app icon, `release-please`, full OS build matrix, paid signing (macOS notarized, Windows signed, Linux AppImage/deb/rpm), auto-update, OS sandbox decision, docs site, contributor guide |
 | **0.2** | GitLab | Forge implementation |
 
 **M0.5 gate:** M1 can't start until the Explain answer is useful on real work code and you decide it's worth continuing. If Kiro is blocked, swap the `AgentBackend` implementation or get the waiver first. If Explain isn't useful without ticket text, fix the Jira path before M1.

@@ -20,15 +20,25 @@ M0.5 (work-laptop proof) and M0 (viewer spike) are experiments that answer quest
 - Branch off `main` as `<type>/<short-desc>`, for example `feat/inbox-list` or `fix/interdiff-force-push`.
 - **Types** follow [Conventional Commits](https://www.conventionalcommits.org/): `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`.
 - PRs are **squash-merged**, and the PR title becomes the commit on `main`. Write the title as a conventional commit (`feat(inbox): show review-requested PRs`), because `release-please` builds the changelog from it.
-- Commits inside a PR exist to help review. Make them small and logical, such as a failing test, then the implementation, then a refactor. Once review has started, push follow-ups as new commits instead of force-pushing, so the reviewer can see what changed.
+- Commits inside a PR exist to help review. Make them small and logical, such as a failing test, then the implementation, then a refactor. Once review has started, push further changes as new commits instead of force-pushing, so the reviewer can see what changed.
 - Stacked PRs are allowed only when a slice can't be split any other way. Each PR in a stack must still meet the size budget.
 - `main` is protected: CI must pass and the maintainer must approve.
 
 ## PR size
 
-- **One concern per PR.** A feature, a refactor and a bug fix are three PRs. Record drive-by improvements as follow-ups instead of including them.
+- **One concern per PR.** A feature, a refactor and a bug fix are three PRs. Track drive-by improvements as [follow-up work](#follow-up-work) instead of including them.
 - **Budget:** about **400 changed lines**. Lockfiles, generated code, test fixtures and scaffolding from official generators don't count.
 - Over budget: split the PR, or explain in its description why it can't be split. The template asks for this.
+
+## Follow-up work
+
+Work noticed during a PR but left out of it must be tracked somewhere it will be picked up. A list in a PR description is not tracking: it is forgotten once the PR merges. Before the PR is ready for review, put each item in the first of these places that fits:
+
+- **An existing issue** it belongs to. Add the details to the issue body, and add acceptance criteria if the item changes what "done" means.
+- **A new issue in the current milestone**, when the work belongs in a milestone that has a tracking issue but no slice covers it. Write it like the milestone's other slice issues, and add it to the tracking issue's checklist. An agent drafts the issue and asks the maintainer before filing it, as for any slice (see [From milestone to PR](#from-milestone-to-pr)).
+- **`PLAN.md`**, in the milestone or section where it belongs, changed in the same PR. Use this for a milestone that hasn't been broken into slices yet.
+
+If the item changes a design decision, also record it in `OPEN-QUESTIONS.md`.
 
 ## PR descriptions
 

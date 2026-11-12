@@ -20,11 +20,7 @@ Closes #
 
 ## Review notes
 
-<!-- Findings from the agent code review, and how each was handled: fixed, or why not. -->
-
-## Follow-ups
-
-<!-- Things noticed but deliberately left out of scope. -->
+<!-- Findings from the agent code review, and how each was handled: fixed, answered, or deferred. Link where each deferred item is tracked (an issue, or the PLAN.md change in this PR); see CONTRIBUTING.md "Follow-up work". -->
 
 ## Checklist
 
