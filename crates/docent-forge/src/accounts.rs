@@ -32,12 +32,32 @@ impl Account {
     }
 }
 
-/// The connected forge hosts. Held in memory only, so nothing is written to
-/// disk and the user reconnects after a restart (remembering hosts across
-/// launches is a later slice).
+/// A host the user connected: live with a token, or remembered from an
+/// earlier launch but not reconnected.
+#[derive(Debug)]
+enum Connection {
+    Connected(Account),
+    Failed { login: String, error: ConnectError },
+}
+
+impl Connection {
+    fn summary(&self, host: &Host) -> AccountSummary {
+        match self {
+            Self::Connected(account) => account.summary(host),
+            Self::Failed { login, error } => AccountSummary {
+                host: host.as_str().to_string(),
+                login: login.clone(),
+                error: Some(error.clone()),
+            },
+        }
+    }
+}
+
+/// The user's forge hosts. Tokens are held in memory only. Which hosts are
+/// connected is remembered by the caller (`docent-store`), never here.
 pub struct Accounts {
     api_base: ApiBase,
-    by_host: Mutex<BTreeMap<Host, Account>>,
+    by_host: Mutex<BTreeMap<Host, Connection>>,
 }
 
 impl Default for Accounts {
@@ -69,25 +89,44 @@ impl Accounts {
         let host = Host::parse(host)?;
         let token = gh.token(&host).await?;
         let login = github::current_login(&host, &(self.api_base)(&host), &token).await?;
-        let account = Account {
+        let connection = Connection::Connected(Account {
             login,
             token: Arc::new(token),
-        };
-        let summary = account.summary(&host);
-        self.lock().insert(host, account);
+        });
+        let summary = connection.summary(&host);
+        self.lock().insert(host, connection);
         Ok(summary)
     }
 
     /// Reconnects a host remembered from an earlier launch, with a fresh
     /// token from `gh`. If that fails, the host stays listed under `login`
     /// with the error, so the user sees it and can reconnect.
+    ///
+    /// `host` comes from disk, so it is parsed like typed input: a host that
+    /// isn't a plain host name never reaches `gh` and isn't listed.
     pub async fn restore(
         &self,
-        _host: &str,
-        _login: &str,
-        _gh: &GhCli,
+        host: &str,
+        login: &str,
+        gh: &GhCli,
     ) -> Result<AccountSummary, ConnectError> {
-        todo!()
+        let host = Host::parse(host)?;
+        let err = match self.connect(host.as_str(), gh).await {
+            Ok(summary) => return Ok(summary),
+            Err(err) => err,
+        };
+        let mut by_host = self.lock();
+        // A live connection made meanwhile wins over the failed restore.
+        if !matches!(by_host.get(&host), Some(Connection::Connected(_))) {
+            by_host.insert(
+                host,
+                Connection::Failed {
+                    login: login.to_string(),
+                    error: err.clone(),
+                },
+            );
+        }
+        Err(err)
     }
 
     /// Looks `repo` up on `host` with that host's token, to confirm it exists
@@ -96,9 +135,9 @@ impl Accounts {
         let host = Host::parse(host)?;
         let (account, token) = {
             let by_host = self.lock();
-            let account = by_host
-                .get(&host)
-                .ok_or_else(|| RepoError::NotConnected(host.as_str().to_string()))?;
+            let Some(Connection::Connected(account)) = by_host.get(&host) else {
+                return Err(RepoError::NotConnected(host.as_str().to_string()));
+            };
             (account.summary(&host), Arc::clone(&account.token))
         };
         match github::repo(&host, &(self.api_base)(&host), &token, repo).await {
@@ -116,15 +155,16 @@ impl Accounts {
         }
     }
 
-    /// The connected hosts, sorted by host name.
+    /// The user's hosts, sorted by host name. A host that failed to
+    /// reconnect carries its error.
     pub fn list(&self) -> Vec<AccountSummary> {
         self.lock()
             .iter()
-            .map(|(host, account)| account.summary(host))
+            .map(|(host, connection)| connection.summary(host))
             .collect()
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<Host, Account>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<Host, Connection>> {
         // The map is only ever replaced whole-entry, so it stays consistent
         // even if a holder panicked.
         self.by_host.lock().unwrap_or_else(PoisonError::into_inner)
