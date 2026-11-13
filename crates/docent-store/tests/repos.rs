@@ -51,9 +51,15 @@ async fn repos_are_listed_by_host_then_owner_then_name() {
     let public = store.upsert_account("github.com", "octocat").await.unwrap();
     let corp = store.upsert_account("ghe.corp.test", "mona").await.unwrap();
 
-    store.watch_repo(public, &repo("octocat", "zeta")).await.unwrap();
+    store
+        .watch_repo(public, &repo("octocat", "zeta"))
+        .await
+        .unwrap();
     store.watch_repo(corp, &repo("team", "tool")).await.unwrap();
-    store.watch_repo(public, &repo("octocat", "Alpha")).await.unwrap();
+    store
+        .watch_repo(public, &repo("octocat", "Alpha"))
+        .await
+        .unwrap();
 
     assert_eq!(
         names(&store.watched_repos().await.unwrap()),
@@ -70,7 +76,10 @@ async fn upserting_an_account_again_keeps_one_row_per_host() {
     let store = Store::open_in_memory().await.expect("open");
 
     let first = store.upsert_account("github.com", "octocat").await.unwrap();
-    let again = store.upsert_account("github.com", "octocat2").await.unwrap();
+    let again = store
+        .upsert_account("github.com", "octocat2")
+        .await
+        .unwrap();
 
     assert_eq!(first, again);
 }
@@ -86,7 +95,10 @@ async fn watching_a_repo_twice_is_rejected() {
 
     // GitHub names are case-insensitive, so a case-only difference is the
     // same repo.
-    for dupe in [repo("octocat", "Hello-World"), repo("OctoCat", "hello-world")] {
+    for dupe in [
+        repo("octocat", "Hello-World"),
+        repo("OctoCat", "hello-world"),
+    ] {
         let err = store.watch_repo(account, &dupe).await.unwrap_err();
         assert_eq!(
             err,
@@ -102,8 +114,14 @@ async fn the_same_repo_name_on_two_hosts_is_two_repos() {
     let public = store.upsert_account("github.com", "octocat").await.unwrap();
     let corp = store.upsert_account("ghe.corp.test", "mona").await.unwrap();
 
-    store.watch_repo(public, &repo("octocat", "tool")).await.unwrap();
-    store.watch_repo(corp, &repo("octocat", "tool")).await.unwrap();
+    store
+        .watch_repo(public, &repo("octocat", "tool"))
+        .await
+        .unwrap();
+    store
+        .watch_repo(corp, &repo("octocat", "tool"))
+        .await
+        .unwrap();
 
     assert_eq!(store.watched_repos().await.unwrap().len(), 2);
 }
