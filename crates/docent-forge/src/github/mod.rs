@@ -128,12 +128,13 @@ struct SearchItem {
 }
 
 impl SearchItem {
-    /// The row for this result, or `None` when `repository_url` doesn't end
-    /// in a plain `/repos/{owner}/{name}`. The response is untrusted, so the
-    /// repo goes through the same check as typed input.
+    /// The row for this result, or `None` when the last two segments of
+    /// `repository_url` aren't a plain `{owner}/{name}`. The response is
+    /// untrusted, so the repo goes through the same check as typed input.
     fn into_pull(self, host: &Host) -> Option<PullSummary> {
-        let (_, repo) = self.repository_url.rsplit_once("/repos/")?;
-        let repo = RepoName::parse(repo).ok()?;
+        let mut segments = self.repository_url.rsplitn(3, '/');
+        let (name, owner) = (segments.next()?, segments.next()?);
+        let repo = RepoName::parse(&format!("{owner}/{name}")).ok()?;
         Some(PullSummary {
             host: host.as_str().to_string(),
             owner: repo.owner().to_string(),

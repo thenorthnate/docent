@@ -15,10 +15,10 @@ pub async fn review_requested(
     if watched.is_empty() {
         return Ok(ReviewRequested::default());
     }
-    // Hosts are stored lowercase; GitHub owner and repo names ignore case.
+    // Host names, and GitHub owner and repo names, all ignore case.
     let is_watched = |host: &str, owner: &str, repo: &str| {
         watched.iter().any(|w| {
-            w.host == host
+            w.host.eq_ignore_ascii_case(host)
                 && w.owner.eq_ignore_ascii_case(owner)
                 && w.name.eq_ignore_ascii_case(repo)
         })
@@ -30,9 +30,11 @@ pub async fn review_requested(
     // RFC 3339 timestamps in UTC sort as text.
     found.pulls.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     // A host with nothing watched on it has nothing to miss.
-    found
-        .failures
-        .retain(|failure| watched.iter().any(|w| w.host == failure.host));
+    found.failures.retain(|failure| {
+        watched
+            .iter()
+            .any(|w| w.host.eq_ignore_ascii_case(&failure.host))
+    });
     Ok(found)
 }
 
@@ -115,6 +117,32 @@ mod tests {
 
         let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
         assert_eq!(numbers, vec![3, 1]);
+    }
+
+    #[tokio::test]
+    async fn watched_repos_on_several_hosts_are_listed_together() {
+        let store = watching(&[
+            ("github.com", "octocat/Hello-World"),
+            ("GHE.corp.test", "mona/tools"),
+        ])
+        .await;
+        let forge = forge(
+            vec![
+                pull(
+                    "github.com",
+                    "octocat/Hello-World",
+                    1,
+                    "2026-11-01T00:00:00Z",
+                ),
+                pull("ghe.corp.test", "mona/tools", 2, "2026-11-02T00:00:00Z"),
+            ],
+            vec![],
+        );
+
+        let found = review_requested(&forge, &store).await.unwrap();
+
+        let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
+        assert_eq!(numbers, vec![2, 1]);
     }
 
     #[tokio::test]
