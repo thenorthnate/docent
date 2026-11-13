@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use crate::github::{self, RepoName};
-use crate::{ConnectError, Forge, ForgeRepo, GhCli, Host, RepoError, ReviewRequested, Token};
+use crate::{
+    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, RepoError, ReviewRequested, Token,
+};
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 
@@ -215,6 +217,32 @@ impl Accounts {
 
 impl Forge for Accounts {
     async fn review_requested(&self) -> ReviewRequested {
-        ReviewRequested::default()
+        let mut found = ReviewRequested::default();
+        // Copy what each host needs, so no lock is held across an API call.
+        let hosts: Vec<(Host, Result<Arc<Token>, ConnectError>)> = self
+            .lock()
+            .iter()
+            .map(|(host, connection)| {
+                let token = match connection {
+                    Connection::Connected(account) => Ok(Arc::clone(&account.token)),
+                    Connection::Failed { error, .. } => Err(error.clone()),
+                };
+                (host.clone(), token)
+            })
+            .collect();
+        for (host, token) in hosts {
+            let result = match token {
+                Ok(token) => github::review_requested(&host, &(self.api_base)(&host), &token).await,
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(pulls) => found.pulls.extend(pulls),
+                Err(error) => found.failures.push(HostFailure {
+                    host: host.as_str().to_string(),
+                    error,
+                }),
+            }
+        }
+        found
     }
 }
