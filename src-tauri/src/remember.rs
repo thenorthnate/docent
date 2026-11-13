@@ -41,15 +41,19 @@ where
         return Ok(());
     }
     let gh = gh().await;
+    // Every host is tried even if saving one fails; the first failure is
+    // reported once all have been tried.
+    let mut first_error = None;
     for account in saved {
         // The login may have changed if the user switched `gh` accounts.
         if let Ok(summary) = accounts.restore(&account.host, &account.login, &gh).await
             && summary.login != account.login
+            && let Err(err) = store.upsert_account(&summary.host, &summary.login).await
         {
-            store.upsert_account(&summary.host, &summary.login).await?;
+            first_error.get_or_insert(err);
         }
     }
-    Ok(())
+    first_error.map_or(Ok(()), |err| Err(err.into()))
 }
 
 #[cfg(all(test, unix))]
