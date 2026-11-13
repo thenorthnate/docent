@@ -10,6 +10,7 @@ beforeEach(() => {
   mockIPC((cmd) => {
     if (cmd === "app_version") return "1.2.3";
     if (cmd === "list_accounts") return [];
+    if (cmd === "list_watched_repos") return [];
     return undefined;
   });
 });

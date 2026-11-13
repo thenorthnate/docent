@@ -1,0 +1,19 @@
+[package]
+name = "docent-store"
+description = "Docent's local SQLite store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# `macros` is only for `migrate!`, which embeds the migrations at build time.
+# Queries are checked at runtime, so the build needs no DATABASE_URL.
+sqlx = { version = "0.9", default-features = false, features = ["macros", "migrate", "runtime-tokio", "sqlite-bundled"] }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

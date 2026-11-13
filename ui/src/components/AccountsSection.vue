@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
+import { messageOf } from "@/lib/ipc";
 
 /** A connected host, as the Rust core reports it. It never includes the token. */
 type Account = { host: string; login: string };
@@ -15,13 +16,6 @@ const host = ref("github.com");
 const connecting = ref(false);
 /** The last error to show, or null when there is none. */
 const error = ref<string | null>(null);
-
-function messageOf(err: unknown): string {
-  if (typeof err === "object" && err !== null && "message" in err) {
-    return String(err.message);
-  }
-  return String(err);
-}
 
 async function refresh() {
   try {
