@@ -35,10 +35,12 @@ async function connect(target: string = host.value) {
   error.value = null;
   try {
     await invoke<Account>("connect_host", { host: target });
-    await refresh();
   } catch (err) {
     error.value = messageOf(err);
   } finally {
+    // Even a failed connect can change the list: a reconnect's new error, or
+    // a host that connected but couldn't be saved.
+    await refresh();
     connecting.value = false;
   }
 }
