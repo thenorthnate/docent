@@ -189,3 +189,53 @@ async fn search_errors_never_carry_the_token() {
     let shown = format!("{:?} {}", found.failures, found.failures[0].error);
     assert!(!shown.contains("gho_secret_a"), "token leaked: {shown}");
 }
+
+#[tokio::test]
+async fn a_repo_owned_by_a_user_named_repos_is_kept() {
+    let gh = FakeGh::with_tokens(&[("github.com", "gho_secret_a")]);
+    let api = github_for("gho_secret_a", "octocat").await;
+    let body = SEARCH_JSON.replace("repos/octocat/Hello-World", "repos/repos/Hello-World");
+    search_answers(&api, "gho_secret_a", &body).await;
+    let accounts = accounts_against(vec![("github.com", &api)]);
+    accounts.connect("github.com", &gh.cli()).await.unwrap();
+
+    let found = accounts.review_requested().await;
+
+    assert_eq!(found.pulls[0].owner, "repos");
+    assert_eq!(found.pulls[0].repo, "Hello-World");
+}
+
+#[tokio::test]
+async fn a_host_that_does_not_answer_times_out_and_the_others_still_show() {
+    let gh = FakeGh::with_tokens(&[
+        ("github.com", "gho_secret_a"),
+        ("ghe.corp.test", "gho_secret_b"),
+    ]);
+    let public = github_for("gho_secret_a", "octocat").await;
+    search_answers(&public, "gho_secret_a", SEARCH_JSON).await;
+    let enterprise = github_for("gho_secret_b", "mona").await;
+    Mock::given(method("GET"))
+        .and(path("/search/issues"))
+        .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(30)))
+        .mount(&enterprise)
+        .await;
+    let accounts = accounts_against(vec![
+        ("github.com", &public),
+        ("ghe.corp.test", &enterprise),
+    ])
+    .with_request_timeout(std::time::Duration::from_millis(200));
+    accounts.connect("github.com", &gh.cli()).await.unwrap();
+    accounts.connect("ghe.corp.test", &gh.cli()).await.unwrap();
+
+    let found = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        accounts.review_requested(),
+    )
+    .await
+    .expect("the slow host was given up on");
+
+    assert_eq!(found.pulls.len(), 2);
+    assert_eq!(found.failures.len(), 1);
+    assert_eq!(found.failures[0].host, "ghe.corp.test");
+    assert_eq!(found.failures[0].error.kind(), "unreachable");
+}

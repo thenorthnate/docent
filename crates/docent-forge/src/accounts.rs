@@ -125,6 +125,10 @@ impl Accounts {
 
     /// How long [`Accounts::restore`] waits for `gh` and the forge before
     /// giving up on a host. Tests shorten it.
+    pub fn with_request_timeout(self, timeout: Duration) -> Self {
+        self
+    }
+
     pub fn with_restore_timeout(self, timeout: Duration) -> Self {
         Self {
             restore_timeout: timeout,
