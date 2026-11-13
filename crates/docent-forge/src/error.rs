@@ -2,7 +2,7 @@ use serde::ser::SerializeStruct;
 
 /// Why a host could not be connected. Each message says what to do next, and
 /// none carries the token.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum ConnectError {
     #[error("{0:?} is not a host name. Enter one like github.com or github.example.com.")]
     InvalidHost(String),

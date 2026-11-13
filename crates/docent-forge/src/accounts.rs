@@ -11,6 +11,8 @@ type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 pub struct AccountSummary {
     pub host: String,
     pub login: String,
+    /// Why a remembered host failed to reconnect, or `None` when connected.
+    pub error: Option<ConnectError>,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,7 @@ impl Account {
         AccountSummary {
             host: host.as_str().to_string(),
             login: self.login.clone(),
+            error: None,
         }
     }
 }
@@ -73,6 +76,18 @@ impl Accounts {
         let summary = account.summary(&host);
         self.lock().insert(host, account);
         Ok(summary)
+    }
+
+    /// Reconnects a host remembered from an earlier launch, with a fresh
+    /// token from `gh`. If that fails, the host stays listed under `login`
+    /// with the error, so the user sees it and can reconnect.
+    pub async fn restore(
+        &self,
+        _host: &str,
+        _login: &str,
+        _gh: &GhCli,
+    ) -> Result<AccountSummary, ConnectError> {
+        todo!()
     }
 
     /// Looks `repo` up on `host` with that host's token, to confirm it exists
