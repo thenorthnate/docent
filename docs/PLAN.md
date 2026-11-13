@@ -410,7 +410,7 @@ Built from the start so this doesn't need a rework: `AgentBackend` takes multipl
 ## 6. Data model (SQLite, initial)
 
 ```
-accounts(id, forge, base_url, login, auth_source, keychain_ref NULL)
+accounts(id, forge, host, login, auth_source, keychain_ref NULL)   -- one login per host; never a token
 repos(id, account_id, owner, name, default_branch, local_path NULL, watched BOOL, profile_id NULL)
 trust(id, repo_id, scope, ref NULL, pr_id NULL, head_sha NULL, granted_at)   -- scope: repo | branch | pr
 pull_requests(id, repo_id, number, title, author, state, is_draft, is_fork, head_sha, base_sha, updated_at, raw_json)
