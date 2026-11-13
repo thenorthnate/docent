@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, PoisonError};
 
-use crate::{ConnectError, GhCli, Host, Token, github};
+use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, RepoName, Token, github};
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 
@@ -70,6 +70,12 @@ impl Accounts {
         let summary = account.summary(&host);
         self.lock().insert(host, account);
         Ok(summary)
+    }
+
+    /// Looks `repo` up on `host` with that host's token, to confirm it exists
+    /// and get its canonical name.
+    pub async fn lookup_repo(&self, _host: &str, _repo: &RepoName) -> Result<ForgeRepo, RepoError> {
+        todo!()
     }
 
     /// The connected hosts, sorted by host name.
