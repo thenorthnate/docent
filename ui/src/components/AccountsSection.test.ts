@@ -75,6 +75,18 @@ describe("AccountsSection", () => {
     expect(wrapper.find("button[aria-label='Reconnect ghe.corp.test']").exists()).toBe(false);
   });
 
+  it("refreshes the list even when connecting reports an error", async () => {
+    // The core connected the host but couldn't save it, and says so.
+    const core = mockCore({}, { kind: "database", message: "Docent's database failed: locked" });
+    const wrapper = await mountSection();
+    core.connected.push({ host: "github.com", login: "octocat", error: null });
+
+    await connect(wrapper, "github.com");
+
+    expect(wrapper.get("[role=alert]").text()).toContain("database failed");
+    expect(rows(wrapper)).toEqual([expect.stringContaining("octocat")]);
+  });
+
   it("says that only GitHub is supported for now", async () => {
     mockCore({});
 
