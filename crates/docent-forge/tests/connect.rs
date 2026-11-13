@@ -2,94 +2,12 @@
 //! token, and a `wiremock` server stands in for the GitHub API.
 #![cfg(unix)]
 
-use std::ffi::OsString;
-use std::os::unix::fs::PermissionsExt;
+mod common;
 
-use docent_forge::{AccountSummary, Accounts, ConnectError, GhCli};
-use tempfile::TempDir;
-use wiremock::matchers::{header, method, path};
+use common::{FakeGh, USER_JSON, accounts_against, github_for, summary};
+use docent_forge::{Accounts, ConnectError, GhCli};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-const USER_JSON: &str = include_str!("fixtures/github-user.json");
-
-/// A temp dir holding a fake `gh` that answers `auth token --hostname <host>`
-/// from `tokens` and records its arguments in `args.log`.
-struct FakeGh {
-    dir: TempDir,
-}
-
-impl FakeGh {
-    fn with_tokens(tokens: &[(&str, &str)]) -> Self {
-        let cases: String = tokens
-            .iter()
-            .map(|(host, token)| format!("  {host}) printf '%s\\n' '{token}' ;;\n"))
-            .collect();
-        Self::with_script(&format!(
-            "case \"$4\" in\n{cases}  *) printf 'no oauth token found for %s\\n' \"$4\" >&2; exit 1 ;;\nesac\n"
-        ))
-    }
-
-    fn with_script(body: &str) -> Self {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let log = dir.path().join("args.log");
-        let script = format!(
-            "#!/bin/sh\nprintf '%s ' \"$@\" >> '{}'\nprintf '\\n' >> '{}'\n{body}",
-            log.display(),
-            log.display()
-        );
-        let gh = dir.path().join("gh");
-        std::fs::write(&gh, script).expect("write fake gh");
-        std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        Self { dir }
-    }
-
-    fn cli(&self) -> GhCli {
-        GhCli::new(OsString::from(self.dir.path()))
-    }
-
-    fn invocations(&self) -> Vec<String> {
-        std::fs::read_to_string(self.dir.path().join("args.log"))
-            .unwrap_or_default()
-            .lines()
-            .map(|l| l.trim_end().to_string())
-            .collect()
-    }
-}
-
-/// A GitHub API that answers `GET /user` only for `token`.
-async fn github_for(token: &str, login: &str) -> MockServer {
-    let server = MockServer::start().await;
-    let body = USER_JSON.replace("octocat", login);
-    Mock::given(method("GET"))
-        .and(path("/user"))
-        .and(header("authorization", format!("Bearer {token}").as_str()))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/json"))
-        .mount(&server)
-        .await;
-    server
-}
-
-/// Accounts whose API base for each host is the matching mock server.
-fn accounts_against(servers: Vec<(&str, &MockServer)>) -> Accounts {
-    let bases: Vec<(String, String)> = servers
-        .into_iter()
-        .map(|(host, server)| (host.to_string(), server.uri()))
-        .collect();
-    Accounts::with_api_base(move |host| {
-        bases
-            .iter()
-            .find(|(h, _)| h == host.as_str())
-            .map(|(_, base)| base.clone())
-            .unwrap_or_else(|| "http://127.0.0.1:9".to_string())
-    })
-}
-
-fn summary(host: &str, login: &str) -> AccountSummary {
-    AccountSummary {
-        host: host.to_string(),
-        login: login.to_string(),
-    }
-}
 
 #[tokio::test]
 async fn connecting_a_host_shows_it_with_the_users_login() {
