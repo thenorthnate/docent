@@ -1,10 +1,15 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use crate::github::{self, RepoName};
 use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, Token};
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
+
+/// How long a startup reconnect waits for `gh` and the forge before giving
+/// up on a host, so one unreachable host can't stall the app.
+const RESTORE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A connected host as the UI sees it. It never holds the token.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -57,6 +62,7 @@ impl Connection {
 /// connected is remembered by the caller (`docent-store`), never here.
 pub struct Accounts {
     api_base: ApiBase,
+    restore_timeout: Duration,
     by_host: Mutex<BTreeMap<Host, Connection>>,
 }
 
@@ -79,14 +85,31 @@ impl Accounts {
     pub fn with_api_base(api_base: impl Fn(&Host) -> String + Send + Sync + 'static) -> Self {
         Self {
             api_base: Box::new(api_base),
+            restore_timeout: RESTORE_TIMEOUT,
             by_host: Mutex::default(),
         }
     }
 
     /// Connects `host` with the token from `gh`, replacing any earlier
-    /// connection to it.
+    /// connection to it. If the host is listed as failed, a new failure
+    /// replaces its error, so the list shows the latest one.
     pub async fn connect(&self, host: &str, gh: &GhCli) -> Result<AccountSummary, ConnectError> {
         let host = Host::parse(host)?;
+        let result = self.connect_parsed(&host, gh).await;
+        if let Err(err) = &result
+            && let Some(Connection::Failed { error, .. }) = self.lock().get_mut(&host)
+        {
+            *error = err.clone();
+        }
+        result
+    }
+
+    async fn connect_parsed(
+        &self,
+        host: &Host,
+        gh: &GhCli,
+    ) -> Result<AccountSummary, ConnectError> {
+        let host = host.clone();
         let token = gh.token(&host).await?;
         let login = github::current_login(&host, &(self.api_base)(&host), &token).await?;
         let connection = Connection::Connected(Account {
@@ -100,8 +123,11 @@ impl Accounts {
 
     /// How long [`Accounts::restore`] waits for `gh` and the forge before
     /// giving up on a host. Tests shorten it.
-    pub fn with_restore_timeout(self, _timeout: std::time::Duration) -> Self {
-        todo!()
+    pub fn with_restore_timeout(self, timeout: Duration) -> Self {
+        Self {
+            restore_timeout: timeout,
+            ..self
+        }
     }
 
     /// Reconnects a host remembered from an earlier launch, with a fresh
@@ -117,9 +143,19 @@ impl Accounts {
         gh: &GhCli,
     ) -> Result<AccountSummary, ConnectError> {
         let host = Host::parse(host)?;
-        let err = match self.connect(host.as_str(), gh).await {
-            Ok(summary) => return Ok(summary),
-            Err(err) => err,
+        // On timeout the connect is dropped, which kills `gh` if it's running.
+        let err = match tokio::time::timeout(self.restore_timeout, self.connect_parsed(&host, gh))
+            .await
+        {
+            Ok(Ok(summary)) => return Ok(summary),
+            Ok(Err(err)) => err,
+            Err(_) => ConnectError::Unreachable {
+                host: host.as_str().to_string(),
+                reason: format!(
+                    "no answer from `gh` or the server within {} seconds",
+                    self.restore_timeout.as_secs()
+                ),
+            },
         };
         let mut by_host = self.lock();
         // A live connection made meanwhile wins over the failed restore.
