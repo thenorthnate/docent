@@ -198,9 +198,10 @@ impl Store {
         Ok(repos)
     }
 
-    /// Stops watching a repo. Its row, and any binding, stay.
+    /// Stops watching a repo. Its row, and any binding, stay. Unwatching a
+    /// repo that is already unwatched does nothing.
     pub async fn unwatch_repo(&self, id: RepoId) -> Result<(), StoreError> {
-        let result = sqlx::query("UPDATE repos SET watched = 0 WHERE id = ?1 AND watched = 1")
+        let result = sqlx::query("UPDATE repos SET watched = 0 WHERE id = ?1")
             .bind(id)
             .execute(&self.pool)
             .await?;

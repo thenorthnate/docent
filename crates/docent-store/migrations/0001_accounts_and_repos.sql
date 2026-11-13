@@ -14,7 +14,9 @@ CREATE TABLE accounts (
 -- binding to a local clone survives watching it again.
 CREATE TABLE repos (
     id             INTEGER PRIMARY KEY,
-    account_id     INTEGER NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+    -- No cascade: deleting an account must not silently drop its repos and
+    -- their bindings.
+    account_id     INTEGER NOT NULL REFERENCES accounts (id),
     -- Forge repo names are case-insensitive.
     owner          TEXT NOT NULL COLLATE NOCASE,
     name           TEXT NOT NULL COLLATE NOCASE,
