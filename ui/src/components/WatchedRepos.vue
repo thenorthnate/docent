@@ -25,22 +25,29 @@ const repo = ref("");
 const watching = ref(false);
 const error = ref<string | null>(null);
 
-/** Hosts are only named on rows when there is more than one to tell apart. */
-const manyHosts = computed(() => accounts.value.length > 1);
+/** The host picker only appears when there is a choice to make. */
+const pickHost = computed(() => accounts.value.length > 1);
+/** Rows name their host only when the watched repos span more than one. */
+const showRepoHost = computed(() => new Set(repos.value.map((r) => r.host)).size > 1);
 
+/** Reads both lists independently, so one failing doesn't hide the other. */
 async function refresh() {
-  try {
-    const [connected, watched] = await Promise.all([
-      invoke<Account[]>("list_accounts"),
-      invoke<WatchedRepo[]>("list_watched_repos"),
-    ]);
-    accounts.value = connected;
-    repos.value = watched;
-    if (!connected.some((a) => a.host === host.value)) {
-      host.value = connected[0]?.host ?? "";
+  const [connected, watched] = await Promise.allSettled([
+    invoke<Account[]>("list_accounts"),
+    invoke<WatchedRepo[]>("list_watched_repos"),
+  ]);
+  if (watched.status === "fulfilled") {
+    repos.value = watched.value;
+  } else {
+    error.value = messageOf(watched.reason);
+  }
+  if (connected.status === "fulfilled") {
+    accounts.value = connected.value;
+    if (!connected.value.some((a) => a.host === host.value)) {
+      host.value = connected.value[0]?.host ?? "";
     }
-  } catch (err) {
-    error.value = messageOf(err);
+  } else {
+    error.value = messageOf(connected.reason);
   }
 }
 
@@ -109,7 +116,7 @@ onMounted(refresh);
           </Button>
         </div>
         <p
-          v-if="manyHosts"
+          v-if="showRepoHost"
           class="text-xs text-muted-foreground"
         >
           {{ r.host }}
@@ -149,7 +156,7 @@ onMounted(refresh);
       class="space-y-1.5"
       @submit.prevent="watch"
     >
-      <template v-if="manyHosts">
+      <template v-if="pickHost">
         <label
           for="watch-host"
           class="sr-only"

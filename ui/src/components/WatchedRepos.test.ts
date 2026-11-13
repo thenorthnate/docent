@@ -127,7 +127,7 @@ describe("WatchedRepos", () => {
       cmd: "watch_repo",
       args: { host: "github.com", repo: "octocat/Hello-World" },
     });
-    expect(rows(wrapper)[0].text()).toContain("github.com");
+    expect(rows(wrapper)).toHaveLength(1);
   });
 
   it.each([
