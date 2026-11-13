@@ -3,6 +3,8 @@
 
 mod accounts;
 mod error;
+#[cfg(feature = "fake")]
+mod fake;
 mod forge;
 mod gh;
 pub mod github;
@@ -12,6 +14,8 @@ mod token;
 
 pub use accounts::{AccountSummary, Accounts};
 pub use error::ConnectError;
+#[cfg(feature = "fake")]
+pub use fake::FakeForge;
 pub use forge::{Forge, HostFailure, PullSummary, ReviewRequested};
 pub use gh::GhCli;
 pub use host::Host;

@@ -1,4 +1,5 @@
 mod command_error;
+mod inbox;
 mod remember;
 mod shell_env;
 mod watch;
