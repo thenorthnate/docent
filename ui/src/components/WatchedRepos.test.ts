@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 /** A fake Rust core holding `accounts` and a list of watched repos. */
-function mockCore(accounts: Account[], options: { failWatch?: Failure } = {}) {
+function mockCore(accounts: Account[], options: { failWatch?: Failure; failAccounts?: Failure } = {}) {
   const repos: Repo[] = [];
   const calls: Array<{ cmd: string; args: unknown }> = [];
   let nextId = 1;
@@ -27,6 +27,7 @@ function mockCore(accounts: Account[], options: { failWatch?: Failure } = {}) {
     calls.push({ cmd, args });
     switch (cmd) {
       case "list_accounts":
+        if (options.failAccounts) throw options.failAccounts;
         return [...accounts];
       case "list_watched_repos":
         return [...repos];
@@ -157,6 +158,33 @@ describe("WatchedRepos", () => {
         .find((b) => b.text() === label);
       expect(button?.attributes("disabled"), label).toBeDefined();
     }
+  });
+
+  it("names each repo's host when the watched repos span hosts, even with none connected", async () => {
+    const core = mockCore([]);
+    for (const [id, host] of [
+      [1, "ghe.corp.test"],
+      [2, "github.com"],
+    ] as const) {
+      core.repos.push({ id, host, owner: "octocat", name: "tool", default_branch: "main", local_path: null });
+    }
+
+    const wrapper = await mountRepos();
+
+    expect(rows(wrapper).map((r) => r.text())).toEqual([
+      expect.stringContaining("ghe.corp.test"),
+      expect.stringContaining("github.com"),
+    ]);
+  });
+
+  it("still lists watched repos when the accounts can't be read", async () => {
+    const core = mockCore([], { failAccounts: { kind: "database", message: "boom" } });
+    core.repos.push({ id: 1, host: "github.com", owner: "o", name: "r", default_branch: "main", local_path: null });
+
+    const wrapper = await mountRepos();
+
+    expect(rows(wrapper)).toHaveLength(1);
+    expect(wrapper.get("[role=alert]").text()).toBe("boom");
   });
 
   it("unwatches a repo", async () => {
