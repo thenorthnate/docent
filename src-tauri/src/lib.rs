@@ -1,4 +1,5 @@
 mod shell_env;
+mod watch;
 
 use std::ffi::OsString;
 use std::path::PathBuf;

@@ -852,6 +852,7 @@ name = "docent"
 version = "0.1.0"
 dependencies = [
  "docent-forge",
+ "docent-store",
  "serde",
  "serde_json",
  "tauri",
