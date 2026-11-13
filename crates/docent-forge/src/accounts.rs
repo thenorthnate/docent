@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use crate::github::{self, RepoName};
-use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, Token};
+use crate::{ConnectError, Forge, ForgeRepo, GhCli, Host, RepoError, ReviewRequested, Token};
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 
@@ -210,5 +210,11 @@ impl Accounts {
         // The map is only ever replaced whole-entry, so it stays consistent
         // even if a holder panicked.
         self.by_host.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Forge for Accounts {
+    async fn review_requested(&self) -> ReviewRequested {
+        ReviewRequested::default()
     }
 }

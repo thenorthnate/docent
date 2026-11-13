@@ -1,8 +1,9 @@
 //! Forge accounts: which hosts the user has connected, the token for each,
-//! and looking up repos with it.
+//! and what Docent asks of the forge with it.
 
 mod accounts;
 mod error;
+mod forge;
 mod gh;
 pub mod github;
 mod host;
@@ -11,6 +12,7 @@ mod token;
 
 pub use accounts::{AccountSummary, Accounts};
 pub use error::ConnectError;
+pub use forge::{Forge, HostFailure, PullSummary, ReviewRequested};
 pub use gh::GhCli;
 pub use host::Host;
 pub use repo::{ForgeRepo, RepoError};
