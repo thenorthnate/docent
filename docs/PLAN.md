@@ -152,7 +152,7 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent reads `PA
 
 ### 5.1 Accounts and connection
 
-- **MVP**: when you connect a host in Settings → Accounts, Docent runs `gh auth token --hostname <host>` and holds the token in memory. Connected hosts aren't remembered across restarts yet; when they are, only host names are stored, and tokens are read from `gh` again at startup. If `gh` already reaches your SSO org, no OAuth app registration or org approval is needed. API calls are made directly from Rust.
+- **MVP**: when you connect a host in Settings → Accounts, Docent runs `gh auth token --hostname <host>` and holds the token in memory. Docent remembers each connected host's name and login (never the token) and, at startup, reads the token from `gh` again in the background. A host that fails to reconnect stays listed in Settings → Accounts with its error and a **Reconnect** button. If `gh` already reaches your SSO org, no OAuth app registration or org approval is needed. API calls are made directly from Rust.
 - **M8, fallback**: a personal access token stored in the OS keychain, for machines without `gh`. Moved out of M1, since the first target has `gh`.
 - **M8**: OAuth device flow for github.com users who don't have `gh`. Each GitHub Enterprise Server instance would need its own registered app, so GHES uses `gh`, a PAT, or a user-supplied client ID.
 - Multiple accounts at once, e.g. work and personal.

@@ -35,7 +35,7 @@ Docent treats PR content as **hostile** until the user trusts the repo, branch o
 
 - trust gating: deciding whether agents, linters or repo config may run
 - agent permission and tool policy, including MCP allowlists and answers to ACP permission requests
-- forge token handling: acquiring, storing, and stripping tokens from child process environments
+- forge token handling: acquiring, storing, and stripping tokens from child process environments, including reconnecting remembered hosts at startup and anything that writes account rows to the store
 - spawning agent, git and `gh` processes, and reading the login shell's `PATH`
 - verification: running commands and managing the verify worktree
 
