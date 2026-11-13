@@ -1,3 +1,4 @@
+mod command_error;
 mod shell_env;
 mod watch;
 
@@ -5,11 +6,11 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use command_error::CommandError;
 use docent_forge::{AccountSummary, Accounts, ConnectError, GhCli};
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{Manager, State};
 use tokio::sync::OnceCell;
-use watch::CommandError;
 
 /// Process-wide state. Tokens live only in `accounts`, in memory.
 ///
