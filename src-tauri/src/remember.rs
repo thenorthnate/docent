@@ -11,23 +11,45 @@ use crate::command_error::CommandError;
 /// Connects `host` and remembers it. Only the host and login reach the
 /// store: it has no column, and no API, that could take a token.
 pub async fn connect(
-    _accounts: &Accounts,
-    _store: &Store,
-    _host: &str,
-    _gh: &GhCli,
+    accounts: &Accounts,
+    store: &Store,
+    host: &str,
+    gh: &GhCli,
 ) -> Result<AccountSummary, CommandError> {
-    todo!()
+    let summary = accounts.connect(host, gh).await?;
+    store.upsert_account(&summary.host, &summary.login).await?;
+    Ok(summary)
 }
 
 /// Reconnects every remembered host. A host that fails stays listed with its
 /// error. `gh` is only asked for (which reads the login shell's `PATH`) when
 /// there is a host to reconnect.
-pub async fn restore_all<F, Fut>(_accounts: &Accounts, _store: &Store, _gh: F)
+///
+/// Returns an error only if the store can't be read or written; a host that
+/// fails to reconnect is not an error here.
+pub async fn restore_all<F, Fut>(
+    accounts: &Accounts,
+    store: &Store,
+    gh: F,
+) -> Result<(), CommandError>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = GhCli>,
 {
-    todo!()
+    let saved = store.saved_accounts().await?;
+    if saved.is_empty() {
+        return Ok(());
+    }
+    let gh = gh().await;
+    for account in saved {
+        // The login may have changed if the user switched `gh` accounts.
+        if let Ok(summary) = accounts.restore(&account.host, &account.login, &gh).await
+            && summary.login != account.login
+        {
+            store.upsert_account(&summary.host, &summary.login).await?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(all(test, unix))]
@@ -97,7 +119,9 @@ mod tests {
 
         // A restart: the store remains, the in-memory accounts don't.
         let after_restart = accounts_against(&api);
-        restore_all(&after_restart, &store, || async { gh.clone() }).await;
+        restore_all(&after_restart, &store, || async { gh.clone() })
+            .await
+            .unwrap();
 
         let listed = after_restart.list();
         assert_eq!(listed.len(), 1);
@@ -116,7 +140,9 @@ mod tests {
         let (_dir, logged_out) = fake_gh(None);
 
         let accounts = accounts_against(&api);
-        restore_all(&accounts, &store, || async { logged_out }).await;
+        restore_all(&accounts, &store, || async { logged_out })
+            .await
+            .unwrap();
 
         let listed = accounts.list();
         assert_eq!(listed.len(), 1);
@@ -138,7 +164,9 @@ mod tests {
         store.upsert_account("github.com", "octocat").await.unwrap();
         let (_dir, gh) = fake_gh(Some(TOKEN));
 
-        restore_all(&accounts_against(&api), &store, || async { gh }).await;
+        restore_all(&accounts_against(&api), &store, || async { gh })
+            .await
+            .unwrap();
 
         assert_eq!(
             store.saved_accounts().await.unwrap(),
@@ -154,7 +182,8 @@ mod tests {
         restore_all(&accounts, &store, || async {
             unreachable!("gh (and the login shell) must not be touched")
         })
-        .await;
+        .await
+        .unwrap();
 
         assert_eq!(accounts.list(), vec![]);
     }
@@ -183,7 +212,9 @@ mod tests {
         connect(&accounts, &store, "github.com", &gh)
             .await
             .expect("connect");
-        restore_all(&accounts, &store, || async { gh.clone() }).await;
+        restore_all(&accounts, &store, || async { gh.clone() })
+            .await
+            .unwrap();
 
         // Check while open (journal files present) and after closing.
         let needle = TOKEN.as_bytes();

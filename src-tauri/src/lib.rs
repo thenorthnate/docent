@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use command_error::CommandError;
-use docent_forge::{AccountSummary, Accounts, ConnectError, GhCli};
+use docent_forge::{AccountSummary, Accounts, GhCli};
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{Manager, State};
 use tokio::sync::OnceCell;
@@ -22,9 +22,27 @@ struct AppState {
     accounts: Accounts,
     /// The `PATH` that child processes use, read once from the login shell.
     child_path: OnceCell<OsString>,
+    /// Set once the remembered hosts have been reconnected (or have failed).
+    restored: OnceCell<()>,
 }
 
 impl AppState {
+    /// The accounts, once the hosts remembered from the last launch have been
+    /// reconnected. Startup begins this in the background; a command that
+    /// arrives first waits for it rather than seeing a half-restored list.
+    async fn accounts(&self, store: &Store) -> &Accounts {
+        self.restored
+            .get_or_init(|| async {
+                if let Err(err) = remember::restore_all(&self.accounts, store, || self.gh()).await {
+                    // Nothing to show this on yet; the user can still connect
+                    // by hand in Settings.
+                    eprintln!("Could not reconnect remembered hosts: {}", err.message);
+                }
+            })
+            .await;
+        &self.accounts
+    }
+
     /// `gh` on the login shell's `PATH`. Only a `PATH` the shell actually
     /// reported is kept; after a failure (say, a slow shell) the next
     /// connect asks again.
@@ -40,21 +58,28 @@ impl AppState {
     }
 }
 
-/// Connects a GitHub host with the token from the user's `gh` login. The
-/// token stays in the Rust core; the UI gets the host and login only.
+/// Connects a GitHub host with the token from the user's `gh` login, and
+/// remembers its host name and login. The token stays in the Rust core's
+/// memory; the UI and the store get the host and login only.
 #[tauri::command]
 async fn connect_host(
     host: String,
     state: State<'_, AppState>,
-) -> Result<AccountSummary, ConnectError> {
+    store: State<'_, Store>,
+) -> Result<AccountSummary, CommandError> {
+    let accounts = state.accounts(&store).await;
     let gh = state.gh().await;
-    state.accounts.connect(&host, &gh).await
+    remember::connect(accounts, &store, &host, &gh).await
 }
 
-/// The connected hosts, without their tokens.
+/// The user's hosts, without their tokens. A host that failed to reconnect
+/// at startup carries its error.
 #[tauri::command]
-fn list_accounts(state: State<'_, AppState>) -> Vec<AccountSummary> {
-    state.accounts.list()
+async fn list_accounts(
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<Vec<AccountSummary>, CommandError> {
+    Ok(state.accounts(&store).await.list())
 }
 
 /// Watches `repo` (`owner/name`) on the connected `host`, once the forge
@@ -66,7 +91,7 @@ async fn watch_repo(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<WatchedRepo, CommandError> {
-    watch::watch(&state.accounts, &store, &host, &repo).await
+    watch::watch(state.accounts(&store).await, &store, &host, &repo).await
 }
 
 /// The watched repos, sorted by host, owner and name.
@@ -101,6 +126,13 @@ pub fn run() {
             let path = app.path().app_data_dir()?.join("docent.sqlite");
             let store = tauri::async_runtime::block_on(Store::open(&path))?;
             app.manage(store);
+            // Reconnect remembered hosts now, off the main thread, so the
+            // window opens without waiting on `gh` or the network.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = handle.state::<AppState>();
+                state.accounts(&handle.state::<Store>()).await;
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
