@@ -98,6 +98,12 @@ impl Accounts {
         Ok(summary)
     }
 
+    /// How long [`Accounts::restore`] waits for `gh` and the forge before
+    /// giving up on a host. Tests shorten it.
+    pub fn with_restore_timeout(self, _timeout: std::time::Duration) -> Self {
+        todo!()
+    }
+
     /// Reconnects a host remembered from an earlier launch, with a fresh
     /// token from `gh`. If that fails, the host stays listed under `login`
     /// with the error, so the user sees it and can reconnect.

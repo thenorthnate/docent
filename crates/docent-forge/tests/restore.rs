@@ -125,3 +125,49 @@ async fn a_failed_reconnect_never_shows_a_token() {
     assert!(shown.contains("token_rejected"), "{shown}");
     assert!(!shown.contains("gho_secret_a"), "token leaked: {shown}");
 }
+
+#[tokio::test]
+async fn a_reconnect_that_hangs_gives_up_and_is_listed_as_unreachable() {
+    // gh never answers, as with a stuck credential helper.
+    let gh = FakeGh::with_script("sleep 30\n");
+    let accounts = Accounts::with_api_base(|_| unreachable!("no API call without a token"))
+        .with_restore_timeout(std::time::Duration::from_millis(200));
+
+    let started = std::time::Instant::now();
+    let err = accounts
+        .restore("github.com", "octocat", &gh.cli())
+        .await
+        .unwrap_err();
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "did not give up"
+    );
+    assert_eq!(err.kind(), "unreachable");
+    assert_eq!(accounts.list()[0].error, Some(err));
+}
+
+#[tokio::test]
+async fn a_failed_reconnect_shows_the_latest_error() {
+    let accounts = Accounts::with_api_base(|_| "http://127.0.0.1:9".to_string());
+    let logged_out = FakeGh::with_tokens(&[]);
+    let _ = accounts
+        .restore("github.com", "octocat", &logged_out.cli())
+        .await;
+
+    // Reconnecting fails differently: gh is now missing altogether.
+    let empty_path = tempfile::tempdir().expect("temp dir");
+    let err = accounts
+        .connect(
+            "github.com",
+            &docent_forge::GhCli::new(empty_path.path().into()),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(err, ConnectError::GhNotFound);
+    assert_eq!(
+        accounts.list(),
+        vec![failed("github.com", "octocat", ConnectError::GhNotFound)]
+    );
+}
