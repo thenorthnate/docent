@@ -148,3 +148,59 @@ async fn each_host_is_asked_with_its_own_token() {
 
     assert_eq!(found.account, summary("ghe.corp.test", "mona"));
 }
+
+// ---- Denial tests: the token must not leave through a repo lookup. ----
+
+#[tokio::test]
+async fn lookup_errors_never_carry_the_token() {
+    let api = MockServer::start().await;
+    for status in [404, 500] {
+        Mock::given(method("GET"))
+            .and(path(format!("/repos/octocat/echo-{status}")))
+            .respond_with(ResponseTemplate::new(status).set_body_string("echo: gho_secret_a"))
+            .mount(&api)
+            .await;
+    }
+    let accounts = connected(&api).await;
+
+    for status in [404, 500] {
+        let err = accounts
+            .lookup_repo("github.com", &name(&format!("octocat/echo-{status}")))
+            .await
+            .unwrap_err();
+        let shown = format!("{err} {err:?}");
+        assert!(!shown.contains("gho_secret_a"), "token leaked: {shown}");
+    }
+}
+
+#[tokio::test]
+async fn the_token_does_not_follow_a_repo_redirect_to_another_host() {
+    let elsewhere = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(REPO_JSON, "application/json"))
+        .mount(&elsewhere)
+        .await;
+    let api = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/octocat/Hello-World"))
+        .respond_with(ResponseTemplate::new(301).insert_header(
+            "location",
+            format!("{}/repos/octocat/Hello-World", elsewhere.uri()),
+        ))
+        .mount(&api)
+        .await;
+    let accounts = connected(&api).await;
+
+    let _ = accounts
+        .lookup_repo("github.com", &name("octocat/Hello-World"))
+        .await;
+
+    let received = elsewhere.received_requests().await.expect("recording on");
+    assert!(!received.is_empty(), "the redirect was not followed");
+    assert!(
+        received
+            .iter()
+            .all(|r| !r.headers.contains_key("authorization")),
+        "token followed the redirect"
+    );
+}

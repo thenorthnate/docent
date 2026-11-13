@@ -149,6 +149,22 @@ async fn an_unwatched_repo_leaves_the_list_and_can_be_watched_again() {
 }
 
 #[tokio::test]
+async fn unwatching_twice_is_not_an_error() {
+    let store = Store::open_in_memory().await.expect("open");
+    let account = store.upsert_account("github.com", "octocat").await.unwrap();
+    let watched = store
+        .watch_repo(account, &repo("octocat", "Hello-World"))
+        .await
+        .unwrap();
+
+    store.unwatch_repo(watched.id).await.expect("first unwatch");
+    store
+        .unwatch_repo(watched.id)
+        .await
+        .expect("second unwatch");
+}
+
+#[tokio::test]
 async fn unwatching_an_unknown_repo_is_an_error() {
     let store = Store::open_in_memory().await.expect("open");
 
