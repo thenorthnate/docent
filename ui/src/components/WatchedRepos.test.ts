@@ -160,6 +160,23 @@ describe("WatchedRepos", () => {
     }
   });
 
+  it.each([
+    ["Bind", "already have"],
+    ["Clone", "full clone"],
+  ])("explains what %s will do in a tooltip that shows while it is disabled", async (label, explains) => {
+    mockCore([{ host: "github.com", login: "octocat" }]);
+    const wrapper = await mountRepos();
+
+    await watch(wrapper, "octocat/Hello-World");
+
+    // A disabled button ignores the pointer, so the tooltip sits on its wrapper.
+    const tooltip = rows(wrapper)[0]
+      .findAll("[title]")
+      .find((el) => el.find("button").exists() && el.text() === label);
+    expect(tooltip?.attributes("title")).toContain(explains);
+    expect(tooltip?.attributes("title")).toContain("Coming soon");
+  });
+
   it("names each repo's host when the watched repos span hosts, even with none connected", async () => {
     const core = mockCore([]);
     for (const [id, host] of [
