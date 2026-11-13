@@ -16,6 +16,12 @@ type WatchedRepo = {
   local_path: string | null;
 };
 
+/** What Bind and Clone will do (PLAN §4, "Repo binding"). */
+const BIND_TOOLTIP =
+  "Bind: point Docent at a clone of this repo you already have, so diffs come from it. Coming soon.";
+const CLONE_TOOLTIP =
+  "Clone: make a full clone into a folder you pick, using your existing git credentials. Coming soon.";
+
 const accounts = ref<Account[]>([]);
 const repos = ref<WatchedRepo[]>([]);
 /** The host to watch on. Only offered as a choice when several are connected. */
@@ -121,27 +127,33 @@ onMounted(refresh);
         >
           {{ r.host }}
         </p>
-        <!-- Placeholders until Bind and Clone land in their own slices. -->
+        <!--
+          Placeholders until Bind and Clone land in their own slices. A
+          disabled button ignores the pointer, so each tooltip sits on a
+          wrapper that still receives the hover.
+        -->
         <div
           v-if="!r.local_path"
           class="flex gap-1"
         >
-          <Button
-            variant="outline"
-            size="xs"
-            disabled
-            title="Coming soon"
-          >
-            Bind
-          </Button>
-          <Button
-            variant="outline"
-            size="xs"
-            disabled
-            title="Coming soon"
-          >
-            Clone
-          </Button>
+          <span :title="BIND_TOOLTIP">
+            <Button
+              variant="outline"
+              size="xs"
+              disabled
+            >
+              Bind
+            </Button>
+          </span>
+          <span :title="CLONE_TOOLTIP">
+            <Button
+              variant="outline"
+              size="xs"
+              disabled
+            >
+              Clone
+            </Button>
+          </span>
         </div>
       </li>
     </ul>
