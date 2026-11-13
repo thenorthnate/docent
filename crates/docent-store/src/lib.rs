@@ -43,6 +43,17 @@ pub enum StoreError {
     Database(String),
 }
 
+impl StoreError {
+    /// A stable name for the UI to branch on.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::AlreadyWatched(_) => "already_watched",
+            Self::RepoNotFound(_) => "repo_not_found",
+            Self::Database(_) => "database",
+        }
+    }
+}
+
 impl From<sqlx::Error> for StoreError {
     fn from(err: sqlx::Error) -> Self {
         Self::Database(err.to_string())

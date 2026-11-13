@@ -1,7 +1,7 @@
 //! Watching a repo: check it exists on the forge, then remember it.
 
-use docent_forge::{Accounts, RepoError};
-use docent_store::{Store, StoreError, WatchedRepo};
+use docent_forge::{Accounts, RepoError, RepoName};
+use docent_store::{NewRepo, Store, StoreError, WatchedRepo};
 
 /// An error sent to the UI as `{ "kind": ..., "message": ... }`, like
 /// `ConnectError`. The message says what to do next.
@@ -12,25 +12,47 @@ pub struct CommandError {
 }
 
 impl From<RepoError> for CommandError {
-    fn from(_err: RepoError) -> Self {
-        todo!()
+    fn from(err: RepoError) -> Self {
+        Self {
+            kind: err.kind(),
+            message: err.to_string(),
+        }
     }
 }
 
 impl From<StoreError> for CommandError {
-    fn from(_err: StoreError) -> Self {
-        todo!()
+    fn from(err: StoreError) -> Self {
+        Self {
+            kind: err.kind(),
+            message: err.to_string(),
+        }
     }
 }
 
 /// Watches `repo` (`owner/name`) on the connected `host`.
 pub async fn watch(
-    _accounts: &Accounts,
-    _store: &Store,
-    _host: &str,
-    _repo: &str,
+    accounts: &Accounts,
+    store: &Store,
+    host: &str,
+    repo: &str,
 ) -> Result<WatchedRepo, CommandError> {
-    todo!()
+    let name = RepoName::parse(repo)?;
+    let found = accounts.lookup_repo(host, &name).await?;
+    // Host and login only: the store has nowhere to put a token.
+    let account = store
+        .upsert_account(&found.account.host, &found.account.login)
+        .await?;
+    let watched = store
+        .watch_repo(
+            account,
+            &NewRepo {
+                owner: found.owner,
+                name: found.name,
+                default_branch: found.default_branch,
+            },
+        )
+        .await?;
+    Ok(watched)
 }
 
 #[cfg(test)]

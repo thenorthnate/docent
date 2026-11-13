@@ -6,8 +6,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use docent_forge::{AccountSummary, Accounts, ConnectError, GhCli};
-use tauri::State;
+use docent_store::{RepoId, Store, WatchedRepo};
+use tauri::{Manager, State};
 use tokio::sync::OnceCell;
+use watch::CommandError;
 
 /// Process-wide state. Tokens live only in `accounts`, in memory.
 ///
@@ -53,6 +55,30 @@ fn list_accounts(state: State<'_, AppState>) -> Vec<AccountSummary> {
     state.accounts.list()
 }
 
+/// Watches `repo` (`owner/name`) on the connected `host`, once the forge
+/// confirms it exists.
+#[tauri::command]
+async fn watch_repo(
+    host: String,
+    repo: String,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<WatchedRepo, CommandError> {
+    watch::watch(&state.accounts, &store, &host, &repo).await
+}
+
+/// The watched repos, sorted by host, owner and name.
+#[tauri::command]
+async fn list_watched_repos(store: State<'_, Store>) -> Result<Vec<WatchedRepo>, CommandError> {
+    Ok(store.watched_repos().await?)
+}
+
+/// Stops watching a repo.
+#[tauri::command]
+async fn unwatch_repo(id: RepoId, store: State<'_, Store>) -> Result<(), CommandError> {
+    Ok(store.unwatch_repo(id).await?)
+}
+
 /// The app version, shown in the UI so a bug report can name it.
 ///
 /// `env!` reads `CARGO_PKG_VERSION` at compile time. Cargo sets it from the
@@ -67,10 +93,21 @@ fn app_version() -> &'static str {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .setup(|app| {
+            // Without its database the app has nothing to show, so a failure
+            // here stops startup with the reason.
+            let path = app.path().app_data_dir()?.join("docent.sqlite");
+            let store = tauri::async_runtime::block_on(Store::open(&path))?;
+            app.manage(store);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             app_version,
             connect_host,
-            list_accounts
+            list_accounts,
+            list_watched_repos,
+            unwatch_repo,
+            watch_repo
         ])
         .run(tauri::generate_context!())
         .expect("Tauri failed to start the app; nothing can run without it");

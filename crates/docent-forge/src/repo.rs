@@ -78,6 +78,18 @@ pub enum RepoError {
     Connect(#[from] ConnectError),
 }
 
+impl RepoError {
+    /// A stable name for the UI to branch on.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::InvalidName(_) => "invalid_name",
+            Self::NotConnected(_) => "not_connected",
+            Self::NotFound { .. } => "not_found",
+            Self::Connect(err) => err.kind(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
