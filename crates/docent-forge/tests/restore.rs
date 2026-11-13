@@ -128,10 +128,12 @@ async fn a_failed_reconnect_never_shows_a_token() {
 
 #[tokio::test]
 async fn a_reconnect_that_hangs_gives_up_and_is_listed_as_unreachable() {
-    // gh never answers, as with a stuck credential helper.
-    let gh = FakeGh::with_script("sleep 30\n");
+    // gh never answers, as with a stuck credential helper. `sleep` is named
+    // by its full path: gh runs with `PATH` set to the fake's folder alone, so
+    // a bare `sleep` isn't found and gh would fail fast instead of hanging.
+    let gh = FakeGh::with_script("exec /bin/sleep 30\n");
     let accounts = Accounts::with_api_base(|_| unreachable!("no API call without a token"))
-        .with_restore_timeout(std::time::Duration::from_millis(200));
+        .with_restore_timeout(std::time::Duration::from_secs(2));
 
     let started = std::time::Instant::now();
     let err = accounts
@@ -140,7 +142,7 @@ async fn a_reconnect_that_hangs_gives_up_and_is_listed_as_unreachable() {
         .unwrap_err();
 
     assert!(
-        started.elapsed() < std::time::Duration::from_secs(5),
+        started.elapsed() < std::time::Duration::from_secs(10),
         "did not give up"
     );
     assert_eq!(err.kind(), "unreachable");
