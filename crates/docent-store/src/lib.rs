@@ -33,6 +33,15 @@ pub struct WatchedRepo {
     pub local_path: Option<String>,
 }
 
+/// A connected host as remembered across launches: its name and login only.
+/// There is no token here, nor anywhere in the store; tokens are read from
+/// `gh` again at startup.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct SavedAccount {
+    pub host: String,
+    pub login: String,
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum StoreError {
     #[error("{0} is already watched.")]
@@ -141,6 +150,14 @@ impl Store {
         .fetch_one(&self.pool)
         .await?;
         Ok(id)
+    }
+
+    /// The remembered hosts, sorted by host name.
+    pub async fn saved_accounts(&self) -> Result<Vec<SavedAccount>, StoreError> {
+        let accounts = sqlx::query_as("SELECT host, login FROM accounts ORDER BY host")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(accounts)
     }
 
     /// Watches `repo` on `account`. A repo that was unwatched is watched

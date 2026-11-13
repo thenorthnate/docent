@@ -88,5 +88,6 @@ pub fn summary(host: &str, login: &str) -> AccountSummary {
     AccountSummary {
         host: host.to_string(),
         login: login.to_string(),
+        error: None,
     }
 }

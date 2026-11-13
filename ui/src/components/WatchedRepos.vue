@@ -4,8 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/ipc";
 
-/** A connected host, as the Rust core reports it. */
-type Account = { host: string; login: string };
+/** A host, as the Rust core reports it. `error` is set when it failed to reconnect. */
+type Account = { host: string; login: string; error: { kind: string; message: string } | null };
 /** A watched repo, as the Rust core reports it. */
 type WatchedRepo = {
   id: number;
@@ -22,6 +22,7 @@ const BIND_TOOLTIP =
 const CLONE_TOOLTIP =
   "Clone: make a full clone into a folder you pick, using your existing git credentials. Coming soon.";
 
+/** The connected hosts: the ones a repo can be watched on. */
 const accounts = ref<Account[]>([]);
 const repos = ref<WatchedRepo[]>([]);
 /** The host to watch on. Only offered as a choice when several are connected. */
@@ -48,9 +49,10 @@ async function refresh() {
     error.value = messageOf(watched.reason);
   }
   if (connected.status === "fulfilled") {
-    accounts.value = connected.value;
-    if (!connected.value.some((a) => a.host === host.value)) {
-      host.value = connected.value[0]?.host ?? "";
+    // A host that failed to reconnect has no token, so it can't look a repo up.
+    accounts.value = connected.value.filter((a) => !a.error);
+    if (!accounts.value.some((a) => a.host === host.value)) {
+      host.value = accounts.value[0]?.host ?? "";
     }
   } else {
     error.value = messageOf(connected.reason);

@@ -1,34 +1,10 @@
 //! Watching a repo: check it exists on the forge, then remember it.
 
+use docent_forge::Accounts;
 use docent_forge::github::RepoName;
-use docent_forge::{Accounts, RepoError};
-use docent_store::{NewRepo, Store, StoreError, WatchedRepo};
+use docent_store::{NewRepo, Store, WatchedRepo};
 
-/// An error sent to the UI as `{ "kind": ..., "message": ... }`, like
-/// `ConnectError`. The message says what to do next.
-#[derive(Debug, PartialEq, Eq, serde::Serialize)]
-pub struct CommandError {
-    kind: &'static str,
-    message: String,
-}
-
-impl From<RepoError> for CommandError {
-    fn from(err: RepoError) -> Self {
-        Self {
-            kind: err.kind(),
-            message: err.to_string(),
-        }
-    }
-}
-
-impl From<StoreError> for CommandError {
-    fn from(err: StoreError) -> Self {
-        Self {
-            kind: err.kind(),
-            message: err.to_string(),
-        }
-    }
-}
+use crate::command_error::CommandError;
 
 /// Watches `repo` (`owner/name`) on the connected `host`.
 pub async fn watch(
@@ -88,20 +64,5 @@ mod tests {
         assert_eq!(err.kind, "not_connected");
         assert!(err.message.contains("Settings"), "{}", err.message);
         assert_eq!(store.watched_repos().await.unwrap(), vec![]);
-    }
-
-    #[test]
-    fn errors_reach_the_ui_as_kind_and_message() {
-        let err = CommandError::from(StoreError::AlreadyWatched(
-            "github.com:octocat/Hello-World".to_string(),
-        ));
-
-        assert_eq!(
-            serde_json::to_value(&err).unwrap(),
-            serde_json::json!({
-                "kind": "already_watched",
-                "message": "github.com:octocat/Hello-World is already watched.",
-            })
-        );
     }
 }

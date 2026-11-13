@@ -166,5 +166,5 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 
 | Topic | Decision |
 |---|---|
-| When the `gh` token is read | When you connect a host, not at startup. Connected hosts aren't remembered yet, so you reconnect after a restart. Remembering them (host names only, never tokens) comes with the first slice that persists settings |
+| When the `gh` token is read | When you connect a host, and again at startup for each remembered host (#13). Only the host name and login are stored, never the token. The startup reconnect runs in the background; commands that need accounts wait for it. It only reads the login shell's `PATH` when there is a host to reconnect. A host that fails stays listed with its error rather than being forgotten |
 | Login shell environment | Only `PATH` is read from the login shell, and only its absolute entries. It is passed to child processes explicitly; Docent's own environment is not changed |

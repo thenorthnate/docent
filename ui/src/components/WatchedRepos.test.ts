@@ -3,7 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import WatchedRepos from "./WatchedRepos.vue";
 
-type Account = { host: string; login: string };
+type Account = { host: string; login: string; error?: Failure | null };
 type Repo = {
   id: number;
   host: string;
@@ -75,6 +75,31 @@ async function watch(wrapper: Wrapper, repo: string) {
 describe("WatchedRepos", () => {
   it("asks for a connected host before a repo can be watched", async () => {
     mockCore([]);
+
+    const wrapper = await mountRepos();
+
+    expect(wrapper.text()).toContain("Connect a host in Settings");
+    expect(wrapper.find("form").exists()).toBe(false);
+  });
+
+  it("only offers hosts that are connected, not ones that failed to reconnect", async () => {
+    const core = mockCore([
+      { host: "ghe.corp.test", login: "mona", error: { kind: "not_logged_in", message: "not logged in" } },
+      { host: "github.com", login: "octocat", error: null },
+    ]);
+    const wrapper = await mountRepos();
+    expect(wrapper.find("select").exists()).toBe(false);
+
+    await watch(wrapper, "octocat/Hello-World");
+
+    expect(core.calls).toContainEqual({
+      cmd: "watch_repo",
+      args: { host: "github.com", repo: "octocat/Hello-World" },
+    });
+  });
+
+  it("asks to reconnect when no host is connected", async () => {
+    mockCore([{ host: "github.com", login: "octocat", error: { kind: "not_logged_in", message: "x" } }]);
 
     const wrapper = await mountRepos();
 

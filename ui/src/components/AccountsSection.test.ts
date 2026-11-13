@@ -3,7 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import AccountsSection from "./AccountsSection.vue";
 
-type Account = { host: string; login: string };
+type Account = { host: string; login: string; error?: { kind: string; message: string } | null };
 
 afterEach(() => {
   clearMocks();
@@ -23,7 +23,9 @@ function mockCore(logins: Record<string, string>, failure?: { kind: string; mess
       if (failure) {
         throw failure;
       }
-      const account = { host, login: logins[host] };
+      const account = { host, login: logins[host], error: null };
+      const existing = connected.findIndex((a) => a.host === host);
+      if (existing >= 0) connected.splice(existing, 1);
       connected.push(account);
       return account;
     }
@@ -49,6 +51,42 @@ async function connect(wrapper: Awaited<ReturnType<typeof mountSection>>, host: 
 }
 
 describe("AccountsSection", () => {
+  it("says it remembers hosts but never the token", async () => {
+    mockCore({});
+
+    const wrapper = await mountSection();
+
+    expect(wrapper.text()).toContain("never the token");
+  });
+
+  it("shows a host that failed to reconnect with its error, and reconnects it", async () => {
+    const message =
+      "`gh` is not logged in to ghe.corp.test. Run `gh auth login --hostname ghe.corp.test` in a terminal, then try again.";
+    const core = mockCore({ "ghe.corp.test": "mona" });
+    core.connected.push({ host: "ghe.corp.test", login: "mona", error: { kind: "not_logged_in", message } });
+    const wrapper = await mountSection();
+    expect(wrapper.get("[data-testid=account]").text()).toContain(message);
+
+    await wrapper.get("button[aria-label='Reconnect ghe.corp.test']").trigger("click");
+    await flushPromises();
+
+    expect(core.calls).toContainEqual({ cmd: "connect_host", args: { host: "ghe.corp.test" } });
+    expect(rows(wrapper)).toEqual([expect.not.stringContaining("not logged in")]);
+    expect(wrapper.find("button[aria-label='Reconnect ghe.corp.test']").exists()).toBe(false);
+  });
+
+  it("refreshes the list even when connecting reports an error", async () => {
+    // The core connected the host but couldn't save it, and says so.
+    const core = mockCore({}, { kind: "database", message: "Docent's database failed: locked" });
+    const wrapper = await mountSection();
+    core.connected.push({ host: "github.com", login: "octocat", error: null });
+
+    await connect(wrapper, "github.com");
+
+    expect(wrapper.get("[role=alert]").text()).toContain("database failed");
+    expect(rows(wrapper)).toEqual([expect.stringContaining("octocat")]);
+  });
+
   it("says that only GitHub is supported for now", async () => {
     mockCore({});
 
