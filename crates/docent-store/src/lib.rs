@@ -154,7 +154,10 @@ impl Store {
 
     /// The remembered hosts, sorted by host name.
     pub async fn saved_accounts(&self) -> Result<Vec<SavedAccount>, StoreError> {
-        todo!()
+        let accounts = sqlx::query_as("SELECT host, login FROM accounts ORDER BY host")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(accounts)
     }
 
     /// Watches `repo` on `account`. A repo that was unwatched is watched
