@@ -42,3 +42,52 @@ pub trait Forge: Sync {
     /// others.
     fn review_requested(&self) -> impl Future<Output = ReviewRequested> + Send;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_ui_receives_pulls_and_failures_with_kind_and_message() {
+        let found = ReviewRequested {
+            pulls: vec![PullSummary {
+                host: "github.com".to_string(),
+                owner: "octocat".to_string(),
+                repo: "Hello-World".to_string(),
+                number: 1347,
+                title: "Fix the greeting".to_string(),
+                author: "mona".to_string(),
+                created_at: "2026-11-10T09:00:00Z".to_string(),
+            }],
+            failures: vec![HostFailure {
+                host: "ghe.corp.test".to_string(),
+                error: ConnectError::HttpStatus {
+                    host: "ghe.corp.test".to_string(),
+                    status: 503,
+                },
+            }],
+        };
+
+        assert_eq!(
+            serde_json::to_value(&found).unwrap(),
+            serde_json::json!({
+                "pulls": [{
+                    "host": "github.com",
+                    "owner": "octocat",
+                    "repo": "Hello-World",
+                    "number": 1347,
+                    "title": "Fix the greeting",
+                    "author": "mona",
+                    "created_at": "2026-11-10T09:00:00Z",
+                }],
+                "failures": [{
+                    "host": "ghe.corp.test",
+                    "error": {
+                        "kind": "http_status",
+                        "message": "ghe.corp.test answered with HTTP 503.",
+                    },
+                }],
+            })
+        );
+    }
+}

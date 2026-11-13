@@ -11,8 +11,29 @@ pub async fn review_requested(
     forge: &impl Forge,
     store: &Store,
 ) -> Result<ReviewRequested, CommandError> {
-    let _ = (forge, store);
-    Ok(ReviewRequested::default())
+    let watched = store.watched_repos().await?;
+    if watched.is_empty() {
+        return Ok(ReviewRequested::default());
+    }
+    // Hosts are stored lowercase; GitHub owner and repo names ignore case.
+    let is_watched = |host: &str, owner: &str, repo: &str| {
+        watched.iter().any(|w| {
+            w.host == host
+                && w.owner.eq_ignore_ascii_case(owner)
+                && w.name.eq_ignore_ascii_case(repo)
+        })
+    };
+    let mut found = forge.review_requested().await;
+    found
+        .pulls
+        .retain(|pull| is_watched(&pull.host, &pull.owner, &pull.repo));
+    // RFC 3339 timestamps in UTC sort as text.
+    found.pulls.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    // A host with nothing watched on it has nothing to miss.
+    found
+        .failures
+        .retain(|failure| watched.iter().any(|w| w.host == failure.host));
+    Ok(found)
 }
 
 #[cfg(test)]
