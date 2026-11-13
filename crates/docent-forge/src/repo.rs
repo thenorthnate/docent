@@ -1,5 +1,10 @@
 use crate::{AccountSummary, ConnectError};
 
+/// GitHub's longest login.
+const MAX_OWNER_LEN: usize = 39;
+/// GitHub's longest repo name.
+const MAX_NAME_LEN: usize = 100;
+
 /// A repo as `owner/name`, checked so that it can only ever be those two
 /// URL path segments.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,8 +14,36 @@ pub struct RepoName {
 }
 
 impl RepoName {
-    pub fn parse(_input: &str) -> Result<Self, RepoError> {
-        todo!()
+    /// Accepts `owner/name` with surrounding spaces. The owner is up to 39
+    /// ASCII letters, digits, `-` or `_` (GitHub's login rules, plus the `_`
+    /// that Enterprise Managed Users have), not starting with `-`. The name
+    /// is up to 100 ASCII letters, digits, `.`, `-` or `_`, and not `.` or
+    /// `..`. That leaves no way to add a path segment, query or fragment.
+    pub fn parse(input: &str) -> Result<Self, RepoError> {
+        let invalid = || RepoError::InvalidName(input.to_string());
+        let (owner, name) = input
+            .trim_matches(' ')
+            .split_once('/')
+            .ok_or_else(invalid)?;
+
+        let owner_ok = (1..=MAX_OWNER_LEN).contains(&owner.len())
+            && !owner.starts_with('-')
+            && owner
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+        let name_ok = (1..=MAX_NAME_LEN).contains(&name.len())
+            && name != "."
+            && name != ".."
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+        if !owner_ok || !name_ok {
+            return Err(invalid());
+        }
+        Ok(Self {
+            owner: owner.to_string(),
+            name: name.to_string(),
+        })
     }
 
     pub fn owner(&self) -> &str {

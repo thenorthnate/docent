@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, RepoName, Token, github};
 
@@ -15,9 +15,8 @@ pub struct AccountSummary {
 #[derive(Debug)]
 struct Account {
     login: String,
-    // Read by the forge API calls that later slices add.
-    #[allow(dead_code)]
-    token: Token,
+    /// Shared so an API call can use it without holding the lock.
+    token: Arc<Token>,
 }
 
 impl Account {
@@ -66,7 +65,10 @@ impl Accounts {
         let host = Host::parse(host)?;
         let token = gh.token(&host).await?;
         let login = github::current_login(&host, &(self.api_base)(&host), &token).await?;
-        let account = Account { login, token };
+        let account = Account {
+            login,
+            token: Arc::new(token),
+        };
         let summary = account.summary(&host);
         self.lock().insert(host, account);
         Ok(summary)
@@ -74,8 +76,28 @@ impl Accounts {
 
     /// Looks `repo` up on `host` with that host's token, to confirm it exists
     /// and get its canonical name.
-    pub async fn lookup_repo(&self, _host: &str, _repo: &RepoName) -> Result<ForgeRepo, RepoError> {
-        todo!()
+    pub async fn lookup_repo(&self, host: &str, repo: &RepoName) -> Result<ForgeRepo, RepoError> {
+        let host = Host::parse(host)?;
+        let (account, token) = {
+            let by_host = self.lock();
+            let account = by_host
+                .get(&host)
+                .ok_or_else(|| RepoError::NotConnected(host.as_str().to_string()))?;
+            (account.summary(&host), Arc::clone(&account.token))
+        };
+        match github::repo(&host, &(self.api_base)(&host), &token, repo).await {
+            Ok(found) => Ok(ForgeRepo {
+                account,
+                owner: found.owner_login().to_string(),
+                name: found.name,
+                default_branch: found.default_branch,
+            }),
+            Err(github::ApiError::NotFound) => Err(RepoError::NotFound {
+                host: host.as_str().to_string(),
+                repo: format!("{}/{}", repo.owner(), repo.name()),
+            }),
+            Err(github::ApiError::Connect(err)) => Err(err.into()),
+        }
     }
 
     /// The connected hosts, sorted by host name.
