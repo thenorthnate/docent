@@ -4,7 +4,7 @@
 mod accounts;
 mod error;
 mod gh;
-mod github;
+pub mod github;
 mod host;
 mod repo;
 mod token;
@@ -13,5 +13,5 @@ pub use accounts::{AccountSummary, Accounts};
 pub use error::ConnectError;
 pub use gh::GhCli;
 pub use host::Host;
-pub use repo::{ForgeRepo, RepoError, RepoName};
+pub use repo::{ForgeRepo, RepoError};
 pub use token::Token;

@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, RepoName, Token, github};
+use crate::github::{self, RepoName};
+use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, Token};
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 

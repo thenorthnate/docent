@@ -1,6 +1,7 @@
 //! Watching a repo: check it exists on the forge, then remember it.
 
-use docent_forge::{Accounts, RepoError, RepoName};
+use docent_forge::github::RepoName;
+use docent_forge::{Accounts, RepoError};
 use docent_store::{NewRepo, Store, StoreError, WatchedRepo};
 
 /// An error sent to the UI as `{ "kind": ..., "message": ... }`, like

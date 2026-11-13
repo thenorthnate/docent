@@ -4,7 +4,8 @@
 mod common;
 
 use common::{FakeGh, accounts_against, github_for, summary};
-use docent_forge::{Accounts, ConnectError, ForgeRepo, RepoError, RepoName};
+use docent_forge::github::RepoName;
+use docent_forge::{Accounts, ConnectError, ForgeRepo, RepoError};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

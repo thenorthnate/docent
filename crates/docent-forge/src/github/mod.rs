@@ -1,6 +1,12 @@
+//! GitHub: its naming rules and the REST calls Docent makes.
+
+mod repo_name;
+
+pub use repo_name::RepoName;
+
 use octocrab::Octocrab;
 
-use crate::{ConnectError, Host, RepoName, Token};
+use crate::{ConnectError, Host, Token};
 
 #[derive(serde::Deserialize)]
 struct User {
