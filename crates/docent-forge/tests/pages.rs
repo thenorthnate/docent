@@ -110,3 +110,127 @@ async fn every_page_is_fetched_and_joined_in_order() {
     assert_eq!(numbers, vec![1, 2, 3, 4, 5]);
     assert_eq!(found.incomplete, Vec::<String>::new());
 }
+
+#[tokio::test]
+async fn results_github_says_are_incomplete_are_flagged() {
+    let api = github_for("gho_secret_a", "octocat").await;
+    page_answers(&api, "gho_secret_a", None, page_body(&[1], 1, true), None).await;
+    let accounts = connected(&api).await;
+
+    let found = accounts.search(Section::ReviewRequested).await;
+
+    assert_eq!(found.pulls.len(), 1, "what did come back is still shown");
+    assert_eq!(found.incomplete, vec!["github.com".to_string()]);
+}
+
+#[tokio::test]
+async fn more_results_than_github_returns_are_flagged() {
+    let api = github_for("gho_secret_a", "octocat").await;
+    // GitHub stops sending `next` at 1,000 results but still counts them all.
+    page_answers(
+        &api,
+        "gho_secret_a",
+        None,
+        page_body(&[1, 2], 1_500, false),
+        None,
+    )
+    .await;
+    let accounts = connected(&api).await;
+
+    let found = accounts.search(Section::ReviewRequested).await;
+
+    assert_eq!(found.incomplete, vec!["github.com".to_string()]);
+}
+
+#[tokio::test]
+async fn a_server_that_never_stops_paging_is_cut_off_at_ten_pages() {
+    let api = github_for("gho_secret_a", "octocat").await;
+    let base = api.uri();
+    page_answers(
+        &api,
+        "gho_secret_a",
+        None,
+        page_body(&[1], 1, false),
+        Some(next_link(&base, 2)),
+    )
+    .await;
+    for page in 2..=20 {
+        let body = page_body(&[u64::from(page)], 1, false);
+        page_answers(
+            &api,
+            "gho_secret_a",
+            Some(page),
+            body,
+            Some(next_link(&base, page + 1)),
+        )
+        .await;
+    }
+    let accounts = connected(&api).await;
+
+    let found = accounts.search(Section::ReviewRequested).await;
+
+    let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
+    assert_eq!(numbers, (1..=10).collect::<Vec<u64>>());
+    assert_eq!(found.incomplete, vec!["github.com".to_string()]);
+}
+
+// ---- Denial test: the token must not follow a `next` link elsewhere. ----
+
+#[tokio::test]
+async fn the_token_does_not_follow_a_next_link_to_another_host() {
+    let elsewhere = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_raw(page_body(&[99], 1, false), "application/json"),
+        )
+        .mount(&elsewhere)
+        .await;
+    let api = github_for("gho_secret_a", "octocat").await;
+    page_answers(
+        &api,
+        "gho_secret_a",
+        None,
+        page_body(&[1], 2, false),
+        Some(next_link(&elsewhere.uri(), 2)),
+    )
+    .await;
+    let accounts = connected(&api).await;
+
+    let found = accounts.search(Section::ReviewRequested).await;
+
+    let received = elsewhere.received_requests().await.expect("recording on");
+    assert!(
+        received
+            .iter()
+            .all(|r| !r.headers.contains_key("authorization")),
+        "token followed the next link: {:?}",
+        received.iter().map(|r| &r.headers).collect::<Vec<_>>()
+    );
+    let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
+    assert_eq!(numbers, vec![1], "nothing from the other host is shown");
+    assert_eq!(found.incomplete, vec!["github.com".to_string()]);
+}
+
+#[tokio::test]
+async fn a_next_link_to_another_endpoint_on_the_same_host_is_not_followed() {
+    let api = github_for("gho_secret_a", "octocat").await;
+    // `/user` answers with the token; a search page must not lead there.
+    let next = format!("<{}/user?page=2>; rel=\"next\"", api.uri());
+    page_answers(
+        &api,
+        "gho_secret_a",
+        None,
+        page_body(&[1], 2, false),
+        Some(next),
+    )
+    .await;
+    let accounts = connected(&api).await;
+
+    let found = accounts.search(Section::ReviewRequested).await;
+
+    let received = api.received_requests().await.expect("recording on");
+    let user_calls = received.iter().filter(|r| r.url.path() == "/user").count();
+    assert_eq!(user_calls, 1, "only the connect asks for /user");
+    assert_eq!(found.failures, vec![]);
+    assert_eq!(found.incomplete, vec!["github.com".to_string()]);
+}
