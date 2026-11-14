@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/ipc";
+import { useInboxStore } from "@/stores/inbox";
 
 /** A host, as the Rust core reports it. `error` is set when it failed to reconnect. */
 type Account = { host: string; login: string; error: { kind: string; message: string } | null };
@@ -31,6 +32,7 @@ const host = ref("");
 const repo = ref("");
 const watching = ref(false);
 const error = ref<string | null>(null);
+const inbox = useInboxStore();
 
 /** The host picker only appears when there is a choice to make. */
 const pickHost = computed(() => accounts.value.length > 1);
@@ -65,6 +67,8 @@ async function watch() {
   try {
     await invoke<WatchedRepo>("watch_repo", { host: host.value, repo: repo.value });
     repo.value = "";
+    // The inbox list follows the watched repos; it reloads on its own time.
+    void inbox.load();
     await refresh();
   } catch (err) {
     error.value = messageOf(err);
@@ -77,6 +81,7 @@ async function unwatch(id: number) {
   error.value = null;
   try {
     await invoke("unwatch_repo", { id });
+    void inbox.load();
     await refresh();
   } catch (err) {
     error.value = messageOf(err);

@@ -1,10 +1,12 @@
+<script setup lang="ts">
+import ReviewRequestedList from "@/components/ReviewRequestedList.vue";
+</script>
+
 <template>
-  <div class="p-6">
+  <div class="space-y-4 p-6">
     <h1 class="text-lg font-semibold">
       Inbox
     </h1>
-    <p class="text-sm text-muted-foreground">
-      Pull requests waiting on you will show here.
-    </p>
+    <ReviewRequestedList />
   </div>
 </template>
