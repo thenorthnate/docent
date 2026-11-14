@@ -64,6 +64,16 @@ function sections(drawer: Drawer) {
     .map((s) => s.findAll("span").map((part) => part.text()).join(" "));
 }
 
+async function select(drawer: Drawer, label: string) {
+  const button = drawer.findAll("[data-testid=inbox-section]").find((s) => s.text().startsWith(label));
+  await button?.trigger("click");
+  await flushPromises();
+}
+
+function rows(list: Awaited<ReturnType<typeof mountInbox>>["list"]) {
+  return list.findAll("[data-testid=inbox-row]");
+}
+
 afterEach(() => {
   clearMocks();
 });
@@ -81,5 +91,21 @@ describe("InboxSections", () => {
 
     expect(sections(drawer)).toEqual(["Review requested 2", "Assigned 1", "Authored by me 0", "Mentioned 3"]);
     expect(drawer.get("[aria-current=true]").text()).toContain("Review requested");
+  });
+
+  it("shows the selected section's PRs in the list", async () => {
+    mockCore({
+      review_requested: { pulls: [pull("Requested")] },
+      mentioned: { pulls: [pull("Mentions you")] },
+    });
+    const { drawer, list } = await mountInbox();
+    expect(list.get("h2").text()).toBe("Review requested");
+    expect(list.text()).toContain("Requested");
+
+    await select(drawer, "Mentioned");
+
+    expect(drawer.get("[aria-current=true]").text()).toContain("Mentioned");
+    expect(list.get("h2").text()).toBe("Mentioned");
+    expect(rows(list).map((r) => r.text())).toEqual([expect.stringContaining("Mentions you")]);
   });
 });

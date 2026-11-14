@@ -3,10 +3,11 @@ import { computed, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
+import { SECTION_LABELS } from "@/lib/sections";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
-const { current, hasWatchedRepos, loading } = storeToRefs(inbox);
+const { current, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
 const pulls = computed(() => current.value.pulls);
 const failures = computed(() => current.value.failures);
 const error = computed(() => current.value.error);
@@ -19,15 +20,15 @@ onMounted(inbox.load);
 
 <template>
   <section
-    aria-labelledby="review-requested-heading"
+    aria-labelledby="inbox-list-heading"
     class="space-y-2"
   >
     <div class="flex items-center justify-between gap-2">
       <h2
-        id="review-requested-heading"
+        id="inbox-list-heading"
         class="text-sm font-semibold"
       >
-        Review requested
+        {{ SECTION_LABELS[selected] }}
       </h2>
       <Button
         variant="ghost"
@@ -54,7 +55,7 @@ onMounted(inbox.load);
         <li
           v-for="pr in pulls"
           :key="`${pr.host}/${pr.owner}/${pr.repo}#${pr.number}`"
-          data-testid="review-requested-row"
+          data-testid="inbox-row"
           class="flex items-baseline gap-3 px-3 py-2 text-sm"
         >
           <span class="min-w-0 flex-1 truncate font-medium">{{ pr.title }}</span>

@@ -67,7 +67,7 @@ async function mountList() {
 }
 
 function rows(wrapper: Awaited<ReturnType<typeof mountList>>) {
-  return wrapper.findAll("[data-testid=review-requested-row]");
+  return wrapper.findAll("[data-testid=inbox-row]");
 }
 
 beforeEach(() => {
