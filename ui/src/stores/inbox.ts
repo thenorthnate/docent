@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { messageOf } from "@/lib/ipc";
 
@@ -21,50 +21,87 @@ export type HostFailure = { host: string; error: { kind: string; message: string
 /** An inbox section the Rust core can search, by its snake-case name. */
 export type Section = "review_requested" | "assigned" | "authored" | "mentioned";
 
+/** The sections, in the order the drawer lists them. */
+export const SECTIONS: readonly Section[] = ["review_requested", "assigned", "authored", "mentioned"];
+
+/**
+ * One section's last answer. `loaded` is false until a load has answered for
+ * it, and `error` is set when the whole section couldn't be read.
+ */
+export type SectionState = {
+  pulls: PullSummary[];
+  failures: HostFailure[];
+  error: string | null;
+  loaded: boolean;
+};
+
 type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[] };
 
-/** The inbox's Review requested section. */
+function emptySection(): SectionState {
+  return { pulls: [], failures: [], error: null, loaded: false };
+}
+
+/** The inbox's sections, and which one the list shows. */
 export const useInboxStore = defineStore("inbox", () => {
-  const pulls = ref<PullSummary[]>([]);
-  const failures = ref<HostFailure[]>([]);
-  const error = ref<string | null>(null);
+  const sections = ref<Record<Section, SectionState>>({
+    review_requested: emptySection(),
+    assigned: emptySection(),
+    authored: emptySection(),
+    mentioned: emptySection(),
+  });
+  const selected = ref<Section>("review_requested");
   const loading = ref(false);
   /** Whether any repo is watched; `null` until the first load. */
   const hasWatchedRepos = ref<boolean | null>(null);
 
+  const current = computed(() => sections.value[selected.value]);
+
   /** Counts loads, so only the latest one started may write its answer. */
   let latest = 0;
 
-  /**
-   * Reads the watched repos, then, if there are any, the forge's review
-   * requests. A load can take a while (each host has its own timeout), so
-   * if another starts meanwhile, the older one's answer is dropped.
-   */
-  async function load() {
-    const id = ++latest;
-    const current = () => id === latest;
-    loading.value = true;
+  /** Reads one section; a failure is kept with that section, not thrown. */
+  async function readSection(section: Section): Promise<SectionState> {
     try {
-      const watched = await invoke<unknown[]>("list_watched_repos");
-      if (!current()) return;
-      hasWatchedRepos.value = watched.length > 0;
-      const found = hasWatchedRepos.value
-        ? await invoke<SectionPulls>("list_section", { section: "review_requested" satisfies Section })
-        : { pulls: [], failures: [] };
-      if (!current()) return;
-      pulls.value = found.pulls;
-      failures.value = found.failures;
-      error.value = null;
+      const found = await invoke<SectionPulls>("list_section", { section });
+      return { ...found, error: null, loaded: true };
     } catch (err) {
-      if (!current()) return;
       // Rows from an earlier load may no longer be right, so don't keep them.
-      pulls.value = [];
-      failures.value = [];
-      error.value = messageOf(err);
-    } finally {
-      if (current()) loading.value = false;
+      return { pulls: [], failures: [], error: messageOf(err), loaded: true };
     }
   }
 
-  return { pulls, failures, error, hasWatchedRepos, loading, load };
+  /**
+   * Reads the watched repos, then, if there are any, every section at once,
+   * so each count is current. A load can take a while (each host has its own
+   * timeout), so if another starts meanwhile, the older one's answer is dropped.
+   */
+  async function load() {
+    const id = ++latest;
+    const isLatest = () => id === latest;
+    loading.value = true;
+    try {
+      let answers: SectionState[];
+      try {
+        const watched = await invoke<unknown[]>("list_watched_repos");
+        if (!isLatest()) return;
+        hasWatchedRepos.value = watched.length > 0;
+        answers = hasWatchedRepos.value
+          ? await Promise.all(SECTIONS.map(readSection))
+          : SECTIONS.map(() => ({ ...emptySection(), loaded: true }));
+      } catch (err) {
+        const error = messageOf(err);
+        answers = SECTIONS.map(() => ({ ...emptySection(), error, loaded: true }));
+      }
+      if (!isLatest()) return;
+      SECTIONS.forEach((section, i) => (sections.value[section] = answers[i]));
+    } finally {
+      if (isLatest()) loading.value = false;
+    }
+  }
+
+  function select(section: Section) {
+    selected.value = section;
+  }
+
+  return { sections, selected, current, hasWatchedRepos, loading, load, select };
 });

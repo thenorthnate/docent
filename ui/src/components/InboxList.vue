@@ -6,7 +6,10 @@ import { formatAge } from "@/lib/age";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
-const { pulls, failures, error, hasWatchedRepos, loading } = storeToRefs(inbox);
+const { current, hasWatchedRepos, loading } = storeToRefs(inbox);
+const pulls = computed(() => current.value.pulls);
+const failures = computed(() => current.value.failures);
+const error = computed(() => current.value.error);
 
 /** Rows name their host only when the PRs span more than one. */
 const showHost = computed(() => new Set(pulls.value.map((pr) => pr.host)).size > 1);

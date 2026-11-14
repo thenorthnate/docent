@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createPinia } from "pinia";
-import ReviewRequestedList from "./ReviewRequestedList.vue";
+import InboxList from "./InboxList.vue";
 import WatchedRepos from "./WatchedRepos.vue";
 import { useInboxStore } from "@/stores/inbox";
 
@@ -47,7 +47,8 @@ function mockCore(state: { pulls?: Pull[]; failures?: Failure[]; repos?: Repo[];
     calls.push(cmd);
     switch (cmd) {
       case "list_section":
-        expect(args).toEqual({ section: "review_requested" });
+        // These cases are about Review requested; the other sections stay empty.
+        if ((args as { section: string }).section !== "review_requested") return { pulls: [], failures: [] };
         if (state.fail) throw state.fail;
         return { pulls: state.pulls ?? [], failures: state.failures ?? [] };
       case "list_watched_repos":
@@ -60,7 +61,7 @@ function mockCore(state: { pulls?: Pull[]; failures?: Failure[]; repos?: Repo[];
 }
 
 async function mountList() {
-  const wrapper = mount(ReviewRequestedList, { global: { plugins: [createPinia()] } });
+  const wrapper = mount(InboxList, { global: { plugins: [createPinia()] } });
   await flushPromises();
   return wrapper;
 }
@@ -79,7 +80,7 @@ afterEach(() => {
   clearMocks();
 });
 
-describe("ReviewRequestedList", () => {
+describe("InboxList", () => {
   it("shows each PR's title, repo, author and age", async () => {
     mockCore({ repos: [watchedRepo], pulls: [pull()] });
 
@@ -175,7 +176,7 @@ describe("ReviewRequestedList", () => {
       }
     });
     const pinia = createPinia();
-    const list = mount(ReviewRequestedList, { global: { plugins: [pinia] } });
+    const list = mount(InboxList, { global: { plugins: [pinia] } });
     const drawer = mount(WatchedRepos, { global: { plugins: [pinia] } });
     await flushPromises();
     expect(rows(list)).toHaveLength(action === "watch" ? 0 : 1);
@@ -194,8 +195,9 @@ describe("ReviewRequestedList", () => {
   it("keeps the newest answer when an older, slower load finishes last", async () => {
     let releaseSlow: (value: unknown) => void = () => {};
     let call = 0;
-    mockIPC((cmd) => {
+    mockIPC((cmd, args) => {
       if (cmd === "list_watched_repos") return [watchedRepo];
+      if ((args as { section: string }).section !== "review_requested") return { pulls: [], failures: [] };
       call += 1;
       if (call === 1) return { pulls: [], failures: [] };
       if (call === 2) return new Promise((resolve) => (releaseSlow = resolve));
