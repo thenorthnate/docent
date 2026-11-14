@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createPinia } from "pinia";
 import ReviewRequestedList from "./ReviewRequestedList.vue";
+import WatchedRepos from "./WatchedRepos.vue";
 
 type Pull = {
   host: string;
@@ -146,5 +147,45 @@ describe("ReviewRequestedList", () => {
       expect.stringContaining("Fix the greeting"),
       expect.stringContaining("Another one"),
     ]);
+  });
+
+  it.each([
+    ["watching", "watch"],
+    ["unwatching", "unwatch"],
+  ])("reloads after %s a repo in the drawer", async (_case, action) => {
+    const repos: Repo[] = action === "watch" ? [] : [watchedRepo];
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case "list_accounts":
+          return [{ host: "github.com", login: "octocat", error: null }];
+        case "list_watched_repos":
+          return [...repos];
+        case "watch_repo":
+          repos.push(watchedRepo);
+          return watchedRepo;
+        case "unwatch_repo":
+          repos.pop();
+          return null;
+        case "list_review_requested":
+          return { pulls: [pull()], failures: [] };
+        default:
+          throw new Error(`unexpected command: ${cmd}`);
+      }
+    });
+    const pinia = createPinia();
+    const list = mount(ReviewRequestedList, { global: { plugins: [pinia] } });
+    const drawer = mount(WatchedRepos, { global: { plugins: [pinia] } });
+    await flushPromises();
+    expect(rows(list)).toHaveLength(action === "watch" ? 0 : 1);
+
+    if (action === "watch") {
+      await drawer.get("input[name=repo]").setValue("octocat/Hello-World");
+      await drawer.get("form").trigger("submit");
+    } else {
+      await drawer.get("button[aria-label='Unwatch octocat/Hello-World']").trigger("click");
+    }
+    await flushPromises();
+
+    expect(rows(list)).toHaveLength(action === "watch" ? 1 : 0);
   });
 });

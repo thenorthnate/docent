@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { createPinia } from "pinia";
 import WatchedRepos from "./WatchedRepos.vue";
 
 type Account = { host: string; login: string; error?: Failure | null };
@@ -47,6 +48,8 @@ function mockCore(accounts: Account[], options: { failWatch?: Failure; failAccou
         );
         return null;
       }
+      case "list_review_requested":
+        return { pulls: [], failures: [] };
       default:
         throw new Error(`unexpected command: ${cmd}`);
     }
@@ -55,7 +58,7 @@ function mockCore(accounts: Account[], options: { failWatch?: Failure; failAccou
 }
 
 async function mountRepos() {
-  const wrapper = mount(WatchedRepos);
+  const wrapper = mount(WatchedRepos, { global: { plugins: [createPinia()] } });
   await flushPromises();
   return wrapper;
 }
