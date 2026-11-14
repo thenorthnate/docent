@@ -13,6 +13,8 @@ export type PullSummary = {
   author: string;
   /** When the PR was opened, as the forge's RFC 3339 timestamp. */
   created_at: string;
+  /** The description as the author wrote it, or `null` when there is none. */
+  body: string | null;
 };
 
 /** A host that couldn't be asked, with the core's `{ kind, message }`. */

@@ -19,6 +19,9 @@ pub struct PullSummary {
     pub author: String,
     /// When the PR was opened, as the forge's RFC 3339 timestamp.
     pub created_at: String,
+    /// The PR's description as the author wrote it (Markdown), or `None`
+    /// when it has none. Untrusted: shown as text, never as HTML.
+    pub body: Option<String>,
 }
 
 /// A host that could not be asked, and why.
@@ -72,6 +75,7 @@ mod tests {
                 title: "Fix the greeting".to_string(),
                 author: "mona".to_string(),
                 created_at: "2026-11-10T09:00:00Z".to_string(),
+                body: Some("Say hello properly.".to_string()),
             }],
             failures: vec![HostFailure {
                 host: "ghe.corp.test".to_string(),
@@ -93,6 +97,7 @@ mod tests {
                     "title": "Fix the greeting",
                     "author": "mona",
                     "created_at": "2026-11-10T09:00:00Z",
+                    "body": "Say hello properly.",
                 }],
                 "failures": [{
                     "host": "ghe.corp.test",

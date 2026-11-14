@@ -32,6 +32,7 @@ fn pull(
     title: &str,
     author: &str,
     created_at: &str,
+    body: Option<&str>,
 ) -> PullSummary {
     let (owner, name) = repo.split_once('/').expect("owner/name");
     PullSummary {
@@ -42,6 +43,7 @@ fn pull(
         title: title.to_string(),
         author: author.to_string(),
         created_at: created_at.to_string(),
+        body: body.map(str::to_string),
     }
 }
 
@@ -65,7 +67,8 @@ async fn review_requested_prs_come_back_with_title_repo_author_and_age() {
                 1347,
                 "Fix the greeting",
                 "mona",
-                "2026-11-10T09:00:00Z"
+                "2026-11-10T09:00:00Z",
+                Some("Say hello properly.\n\nFixes #12.")
             ),
             pull(
                 "github.com",
@@ -73,10 +76,11 @@ async fn review_requested_prs_come_back_with_title_repo_author_and_age() {
                 42,
                 "Sharpen the knife",
                 "hubot",
-                "2026-11-01T12:00:00Z"
+                "2026-11-01T12:00:00Z",
+                None
             ),
         ],
-        "the item whose repository_url isn't a plain owner/name is dropped"
+        "a missing description is None, and the item whose repository_url isn't a plain owner/name is dropped"
     );
 }
 
