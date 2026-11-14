@@ -1,4 +1,8 @@
-import type { Section } from "@/stores/inbox";
+/** The inbox sections the Rust core can search, in the order the drawer lists them. */
+export const SECTIONS = ["review_requested", "assigned", "authored", "mentioned"] as const;
+
+/** An inbox section, by the snake-case name the core takes. */
+export type Section = (typeof SECTIONS)[number];
 
 /** Each section's name, as the drawer and the list heading show it. */
 export const SECTION_LABELS: Record<Section, string> = {

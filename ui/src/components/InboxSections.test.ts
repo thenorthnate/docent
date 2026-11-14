@@ -5,7 +5,8 @@ import { createPinia } from "pinia";
 import InboxList from "./InboxList.vue";
 import InboxSections from "./InboxSections.vue";
 import WatchedRepos from "./WatchedRepos.vue";
-import { SECTIONS, useInboxStore, type HostFailure, type PullSummary, type Section } from "@/stores/inbox";
+import { SECTIONS, type Section } from "@/lib/sections";
+import { useInboxStore, type HostFailure, type PullSummary } from "@/stores/inbox";
 
 type Failure = HostFailure["error"];
 type SectionState = { pulls?: PullSummary[]; failures?: HostFailure[]; fail?: Failure };

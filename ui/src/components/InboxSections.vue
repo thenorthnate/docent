@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { SECTION_LABELS } from "@/lib/sections";
-import { SECTIONS, useInboxStore } from "@/stores/inbox";
+import { SECTION_LABELS, SECTIONS } from "@/lib/sections";
+import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
 const { sections, selected } = storeToRefs(inbox);

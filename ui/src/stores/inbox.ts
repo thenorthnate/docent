@@ -2,6 +2,9 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { messageOf } from "@/lib/ipc";
+import { SECTIONS, type Section } from "@/lib/sections";
+
+export type { Section };
 
 /** An open PR in an inbox section, as the Rust core reports it. */
 export type PullSummary = {
@@ -18,12 +21,6 @@ export type PullSummary = {
 /** A host that couldn't be asked, with the core's `{ kind, message }`. */
 export type HostFailure = { host: string; error: { kind: string; message: string } };
 
-/** An inbox section the Rust core can search, by its snake-case name. */
-export type Section = "review_requested" | "assigned" | "authored" | "mentioned";
-
-/** The sections, in the order the drawer lists them. */
-export const SECTIONS: readonly Section[] = ["review_requested", "assigned", "authored", "mentioned"];
-
 /**
  * One section's last answer. `loaded` is false until a load has answered for
  * it, and `error` is set when the whole section couldn't be read.
@@ -37,63 +34,56 @@ export type SectionState = {
 
 type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[] };
 
-function emptySection(): SectionState {
-  return { pulls: [], failures: [], error: null, loaded: false };
+function sectionState(answer: Partial<SectionState> = {}): SectionState {
+  return { pulls: [], failures: [], error: null, loaded: false, ...answer };
 }
 
 /** The inbox's sections, and which one the list shows. */
 export const useInboxStore = defineStore("inbox", () => {
-  const sections = ref<Record<Section, SectionState>>({
-    review_requested: emptySection(),
-    assigned: emptySection(),
-    authored: emptySection(),
-    mentioned: emptySection(),
-  });
+  const sections = ref(Object.fromEntries(SECTIONS.map((s) => [s, sectionState()])) as Record<Section, SectionState>);
   const selected = ref<Section>("review_requested");
   const loading = ref(false);
   /** Whether any repo is watched; `null` until the first load. */
   const hasWatchedRepos = ref<boolean | null>(null);
 
-  const current = computed(() => sections.value[selected.value]);
+  const selectedSection = computed(() => sections.value[selected.value]);
 
   /** Counts loads, so only the latest one started may write its answer. */
   let latest = 0;
 
-  /** Reads one section; a failure is kept with that section, not thrown. */
-  async function readSection(section: Section): Promise<SectionState> {
-    try {
-      const found = await invoke<SectionPulls>("list_section", { section });
-      return { ...found, error: null, loaded: true };
-    } catch (err) {
-      // Rows from an earlier load may no longer be right, so don't keep them.
-      return { pulls: [], failures: [], error: messageOf(err), loaded: true };
-    }
-  }
-
   /**
    * Reads the watched repos, then, if there are any, every section at once,
-   * so each count is current. A load can take a while (each host has its own
-   * timeout), so if another starts meanwhile, the older one's answer is dropped.
+   * so each count is current. Each section shows as soon as it answers, since
+   * a slow host can take its whole timeout. If another load starts meanwhile,
+   * the older one's answers are dropped.
    */
   async function load() {
     const id = ++latest;
     const isLatest = () => id === latest;
+    // Rows from an earlier load may no longer be right, so a failure clears them.
+    const write = (section: Section, answer: Partial<SectionState>) => {
+      if (isLatest()) sections.value[section] = sectionState({ ...answer, loaded: true });
+    };
     loading.value = true;
     try {
-      let answers: SectionState[];
-      try {
-        const watched = await invoke<unknown[]>("list_watched_repos");
-        if (!isLatest()) return;
-        hasWatchedRepos.value = watched.length > 0;
-        answers = hasWatchedRepos.value
-          ? await Promise.all(SECTIONS.map(readSection))
-          : SECTIONS.map(() => ({ ...emptySection(), loaded: true }));
-      } catch (err) {
-        const error = messageOf(err);
-        answers = SECTIONS.map(() => ({ ...emptySection(), error, loaded: true }));
-      }
+      const watched = await invoke<unknown[]>("list_watched_repos");
       if (!isLatest()) return;
-      SECTIONS.forEach((section, i) => (sections.value[section] = answers[i]));
+      hasWatchedRepos.value = watched.length > 0;
+      if (!hasWatchedRepos.value) {
+        SECTIONS.forEach((section) => write(section, {}));
+        return;
+      }
+      await Promise.all(
+        SECTIONS.map((section) =>
+          invoke<SectionPulls>("list_section", { section }).then(
+            (found) => write(section, found),
+            (err: unknown) => write(section, { error: messageOf(err) }),
+          ),
+        ),
+      );
+    } catch (err) {
+      const error = messageOf(err);
+      SECTIONS.forEach((section) => write(section, { error }));
     } finally {
       if (isLatest()) loading.value = false;
     }
@@ -103,5 +93,5 @@ export const useInboxStore = defineStore("inbox", () => {
     selected.value = section;
   }
 
-  return { sections, selected, current, hasWatchedRepos, loading, load, select };
+  return { sections, selected, selectedSection, hasWatchedRepos, loading, load, select };
 });

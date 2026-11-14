@@ -7,10 +7,10 @@ import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
-const { current, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
-const pulls = computed(() => current.value.pulls);
-const failures = computed(() => current.value.failures);
-const error = computed(() => current.value.error);
+const { selectedSection, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
+const pulls = computed(() => selectedSection.value.pulls);
+const failures = computed(() => selectedSection.value.failures);
+const error = computed(() => selectedSection.value.error);
 
 /** Rows name their host only when the PRs span more than one. */
 const showHost = computed(() => new Set(pulls.value.map((pr) => pr.host)).size > 1);
