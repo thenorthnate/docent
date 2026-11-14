@@ -1,19 +1,19 @@
-//! The inbox's Review requested section: the forge's review requests, kept
-//! to watched repos.
+//! The inbox's sections: the forge's searches, kept to watched repos.
 
-use docent_forge::{Forge, ReviewRequested};
+use docent_forge::{Forge, Section, SectionPulls};
 use docent_store::Store;
 
 use crate::command_error::CommandError;
 
-/// Open PRs that request the user's review, in watched repos only.
-pub async fn review_requested(
+/// The open PRs in `section`, in watched repos only.
+pub async fn section(
     forge: &impl Forge,
     store: &Store,
-) -> Result<ReviewRequested, CommandError> {
+    section: Section,
+) -> Result<SectionPulls, CommandError> {
     let watched = store.watched_repos().await?;
     if watched.is_empty() {
-        return Ok(ReviewRequested::default());
+        return Ok(SectionPulls::default());
     }
     // Host names, and GitHub owner and repo names, all ignore case.
     let is_watched = |host: &str, owner: &str, repo: &str| {
@@ -23,7 +23,7 @@ pub async fn review_requested(
                 && w.name.eq_ignore_ascii_case(repo)
         })
     };
-    let mut found = forge.review_requested().await;
+    let mut found = forge.search(section).await;
     found
         .pulls
         .retain(|pull| is_watched(&pull.host, &pull.owner, &pull.repo));
