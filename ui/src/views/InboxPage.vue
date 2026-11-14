@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ReviewRequestedList from "@/components/ReviewRequestedList.vue";
+import InboxList from "@/components/InboxList.vue";
 </script>
 
 <template>
@@ -7,6 +7,6 @@ import ReviewRequestedList from "@/components/ReviewRequestedList.vue";
     <h1 class="text-lg font-semibold">
       Inbox
     </h1>
-    <ReviewRequestedList />
+    <InboxList />
   </div>
 </template>

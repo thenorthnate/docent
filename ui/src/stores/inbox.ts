@@ -1,7 +1,10 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { messageOf } from "@/lib/ipc";
+import { SECTIONS, type Section } from "@/lib/sections";
+
+export type { Section };
 
 /** An open PR in an inbox section, as the Rust core reports it. */
 export type PullSummary = {
@@ -18,53 +21,77 @@ export type PullSummary = {
 /** A host that couldn't be asked, with the core's `{ kind, message }`. */
 export type HostFailure = { host: string; error: { kind: string; message: string } };
 
-/** An inbox section the Rust core can search, by its snake-case name. */
-export type Section = "review_requested" | "assigned" | "authored" | "mentioned";
+/**
+ * One section's last answer. `loaded` is false until a load has answered for
+ * it, and `error` is set when the whole section couldn't be read.
+ */
+export type SectionState = {
+  pulls: PullSummary[];
+  failures: HostFailure[];
+  error: string | null;
+  loaded: boolean;
+};
 
 type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[] };
 
-/** The inbox's Review requested section. */
+function sectionState(answer: Partial<SectionState> = {}): SectionState {
+  return { pulls: [], failures: [], error: null, loaded: false, ...answer };
+}
+
+/** The inbox's sections, and which one the list shows. */
 export const useInboxStore = defineStore("inbox", () => {
-  const pulls = ref<PullSummary[]>([]);
-  const failures = ref<HostFailure[]>([]);
-  const error = ref<string | null>(null);
+  const sections = ref(Object.fromEntries(SECTIONS.map((s) => [s, sectionState()])) as Record<Section, SectionState>);
+  const selected = ref<Section>("review_requested");
   const loading = ref(false);
   /** Whether any repo is watched; `null` until the first load. */
   const hasWatchedRepos = ref<boolean | null>(null);
+
+  const selectedSection = computed(() => sections.value[selected.value]);
 
   /** Counts loads, so only the latest one started may write its answer. */
   let latest = 0;
 
   /**
-   * Reads the watched repos, then, if there are any, the forge's review
-   * requests. A load can take a while (each host has its own timeout), so
-   * if another starts meanwhile, the older one's answer is dropped.
+   * Reads the watched repos, then, if there are any, every section at once,
+   * so each count is current. Each section shows as soon as it answers, since
+   * a slow host can take its whole timeout. If another load starts meanwhile,
+   * the older one's answers are dropped.
    */
   async function load() {
     const id = ++latest;
-    const current = () => id === latest;
+    const isLatest = () => id === latest;
+    // Rows from an earlier load may no longer be right, so a failure clears them.
+    const write = (section: Section, answer: Partial<SectionState>) => {
+      if (isLatest()) sections.value[section] = sectionState({ ...answer, loaded: true });
+    };
     loading.value = true;
     try {
       const watched = await invoke<unknown[]>("list_watched_repos");
-      if (!current()) return;
+      if (!isLatest()) return;
       hasWatchedRepos.value = watched.length > 0;
-      const found = hasWatchedRepos.value
-        ? await invoke<SectionPulls>("list_section", { section: "review_requested" satisfies Section })
-        : { pulls: [], failures: [] };
-      if (!current()) return;
-      pulls.value = found.pulls;
-      failures.value = found.failures;
-      error.value = null;
+      if (!hasWatchedRepos.value) {
+        SECTIONS.forEach((section) => write(section, {}));
+        return;
+      }
+      await Promise.all(
+        SECTIONS.map((section) =>
+          invoke<SectionPulls>("list_section", { section }).then(
+            (found) => write(section, found),
+            (err: unknown) => write(section, { error: messageOf(err) }),
+          ),
+        ),
+      );
     } catch (err) {
-      if (!current()) return;
-      // Rows from an earlier load may no longer be right, so don't keep them.
-      pulls.value = [];
-      failures.value = [];
-      error.value = messageOf(err);
+      const error = messageOf(err);
+      SECTIONS.forEach((section) => write(section, { error }));
     } finally {
-      if (current()) loading.value = false;
+      if (isLatest()) loading.value = false;
     }
   }
 
-  return { pulls, failures, error, hasWatchedRepos, loading, load };
+  function select(section: Section) {
+    selected.value = section;
+  }
+
+  return { sections, selected, selectedSection, hasWatchedRepos, loading, load, select };
 });
