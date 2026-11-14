@@ -17,6 +17,7 @@ async fn search_answers(server: &MockServer, token: &str, query: &str, body: &st
         .and(path("/search/issues"))
         .and(query_param("q", query))
         .and(query_param("sort", "updated"))
+        .and(query_param("order", "desc"))
         .and(query_param("per_page", "100"))
         .and(header("authorization", format!("Bearer {token}").as_str()))
         .respond_with(ResponseTemplate::new(200).set_body_raw(body.to_string(), "application/json"))

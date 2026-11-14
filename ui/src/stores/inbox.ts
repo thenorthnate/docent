@@ -18,6 +18,9 @@ export type PullSummary = {
 /** A host that couldn't be asked, with the core's `{ kind, message }`. */
 export type HostFailure = { host: string; error: { kind: string; message: string } };
 
+/** An inbox section the Rust core can search, by its snake-case name. */
+export type Section = "review_requested" | "assigned" | "authored" | "mentioned";
+
 type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[] };
 
 /** The inbox's Review requested section. */
@@ -46,7 +49,7 @@ export const useInboxStore = defineStore("inbox", () => {
       if (!current()) return;
       hasWatchedRepos.value = watched.length > 0;
       const found = hasWatchedRepos.value
-        ? await invoke<SectionPulls>("list_section", { section: "review_requested" })
+        ? await invoke<SectionPulls>("list_section", { section: "review_requested" satisfies Section })
         : { pulls: [], failures: [] };
       if (!current()) return;
       pulls.value = found.pulls;

@@ -6,7 +6,7 @@ use docent_store::Store;
 use crate::command_error::CommandError;
 
 /// The open PRs in `section`, in watched repos only.
-pub async fn section(
+pub async fn section_pulls(
     forge: &impl Forge,
     store: &Store,
     section: Section,
@@ -113,7 +113,7 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested)
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
             .await
             .unwrap();
 
@@ -141,7 +141,7 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested)
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
             .await
             .unwrap();
 
@@ -162,7 +162,7 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested)
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
             .await
             .unwrap();
 
@@ -182,7 +182,7 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested)
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
             .await
             .unwrap();
 
@@ -202,7 +202,7 @@ mod tests {
             vec![failure("github.com")],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested)
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
             .await
             .unwrap();
 
@@ -218,7 +218,7 @@ mod tests {
             vec![failure("github.com"), failure("ghe.corp.test")],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested)
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
             .await
             .unwrap();
 
@@ -252,7 +252,7 @@ mod tests {
                 vec![],
             );
 
-            let found = section(&forge, &store, asked).await.unwrap();
+            let found = section_pulls(&forge, &store, asked).await.unwrap();
 
             assert_eq!(forge.asked(), vec![asked]);
             let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();

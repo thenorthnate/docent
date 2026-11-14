@@ -116,7 +116,7 @@ async fn list_section(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<SectionPulls, CommandError> {
-    inbox::section(state.accounts(&store).await, &store, section).await
+    inbox::section_pulls(state.accounts(&store).await, &store, section).await
 }
 
 /// The app version, shown in the UI so a bug report can name it.
