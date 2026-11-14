@@ -4,9 +4,8 @@ mod repo_name;
 
 pub use repo_name::RepoName;
 
-use std::time::Duration;
-
 use octocrab::{Octocrab, Page};
+use tokio::time::Instant;
 
 use crate::{ConnectError, Host, PullSummary, Section, Token};
 
@@ -182,31 +181,41 @@ fn next_search_path(api_base: &str, next: &str) -> Option<String> {
 }
 
 /// The open PRs in `section` on `host`, following `next` links up to
-/// GitHub's 1,000-result limit. Each page has `timeout` to answer.
+/// GitHub's 1,000-result limit, until `deadline`. If the first page fails the
+/// host fails; if a later one does, the pages so far come back as incomplete.
 pub(crate) async fn search(
     host: &Host,
     api_base: &str,
     token: &Token,
     section: Section,
-    timeout: Duration,
+    deadline: Instant,
 ) -> Result<HostPulls, ConnectError> {
     let mut pulls = Vec::new();
     let mut fetched: u64 = 0;
     let mut incomplete = false;
     let mut next = Some(search_path(section).to_string());
-    for _ in 0..MAX_PAGES {
+    for page_index in 0..MAX_PAGES {
         let Some(path) = next.take() else { break };
         let page: Page<SearchItem> =
-            tokio::time::timeout(timeout, get(host, api_base, token, &path))
-                .await
-                .map_err(|_| ConnectError::Unreachable {
-                    host: host.as_str().to_string(),
-                    reason: format!("no answer within {} seconds", timeout.as_secs()),
-                })?
-                .map_err(|err| err.into_connect(host))?;
+            match tokio::time::timeout_at(deadline, get(host, api_base, token, &path)).await {
+                Ok(Ok(page)) => page,
+                _ if page_index > 0 => {
+                    incomplete = true;
+                    break;
+                }
+                Ok(Err(err)) => return Err(err.into_connect(host)),
+                Err(_) => {
+                    return Err(ConnectError::Unreachable {
+                        host: host.as_str().to_string(),
+                        reason: "no answer in time".to_string(),
+                    });
+                }
+            };
         fetched += page.items.len() as u64;
-        incomplete |= page.incomplete_results == Some(true)
-            || page.total_count.is_some_and(|total| total > fetched) && page.next.is_none();
+        let said_incomplete = page.incomplete_results == Some(true);
+        let more_than_linked =
+            page.next.is_none() && page.total_count.is_some_and(|total| total > fetched);
+        incomplete |= said_incomplete || more_than_linked;
         if let Some(link) = &page.next {
             next = next_search_path(api_base, &link.to_string());
             // A next page Docent won't ask for is a page missing.

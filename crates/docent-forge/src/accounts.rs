@@ -14,9 +14,8 @@ type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 /// up on a host, so one unreachable host can't stall the app.
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// How long an inbox search waits for each page from a host before reporting
-/// the host unreachable, so one host that stops answering can't hide the
-/// others.
+/// How long an inbox search waits for one host, across all its pages, so one
+/// host that stops answering can't hide the others.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A connected host as the UI sees it. It never holds the token.
@@ -131,8 +130,7 @@ impl Accounts {
         Ok(summary)
     }
 
-    /// How long an inbox search waits for each page from a host. Tests
-    /// shorten it.
+    /// How long an inbox search waits for each host. Tests shorten it.
     pub fn with_request_timeout(self, timeout: Duration) -> Self {
         Self {
             request_timeout: timeout,
@@ -251,7 +249,8 @@ impl Forge for Accounts {
             let result = match token {
                 Ok(token) => {
                     let api_base = (self.api_base)(&host);
-                    github::search(&host, &api_base, &token, section, self.request_timeout).await
+                    let deadline = tokio::time::Instant::now() + self.request_timeout;
+                    github::search(&host, &api_base, &token, section, deadline).await
                 }
                 Err(error) => Err(error),
             };
