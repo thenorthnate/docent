@@ -51,6 +51,9 @@ pub enum Section {
 pub struct SectionPulls {
     pub pulls: Vec<PullSummary>,
     pub failures: Vec<HostFailure>,
+    /// Hosts that answered, but whose results were cut short: the forge said
+    /// so, or there were more than Docent fetches.
+    pub incomplete: Vec<String>,
 }
 
 /// A forge, across every connected host.
@@ -65,7 +68,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_ui_receives_pulls_and_failures_with_kind_and_message() {
+    fn the_ui_receives_pulls_failures_and_incomplete_hosts() {
         let found = SectionPulls {
             pulls: vec![PullSummary {
                 host: "github.com".to_string(),
@@ -84,6 +87,7 @@ mod tests {
                     status: 503,
                 },
             }],
+            incomplete: vec!["github.com".to_string()],
         };
 
         assert_eq!(
@@ -106,6 +110,7 @@ mod tests {
                         "message": "ghe.corp.test answered with HTTP 503.",
                     },
                 }],
+                "incomplete": ["github.com"],
             })
         );
     }

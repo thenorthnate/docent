@@ -4,7 +4,9 @@ mod repo_name;
 
 pub use repo_name::RepoName;
 
-use octocrab::Octocrab;
+use std::time::Duration;
+
+use octocrab::{Octocrab, Page};
 
 use crate::{ConnectError, Host, PullSummary, Section, Token};
 
@@ -53,7 +55,7 @@ fn client(host: &Host, api_base: &str, token: &Token) -> Result<Octocrab, Connec
 }
 
 /// `GET path`, with errors mapped so none carries the response body.
-async fn get<T: serde::de::DeserializeOwned>(
+async fn get<T: octocrab::FromResponse>(
     host: &Host,
     api_base: &str,
     token: &Token,
@@ -127,11 +129,6 @@ fn search_path(section: Section) -> &'static str {
     }
 }
 
-#[derive(serde::Deserialize)]
-struct SearchResults {
-    items: Vec<SearchItem>,
-}
-
 /// The fields of a search result that an inbox row needs.
 #[derive(serde::Deserialize)]
 struct SearchItem {
@@ -164,21 +161,66 @@ impl SearchItem {
     }
 }
 
-/// The open PRs in `section` on `host`. Only the first 100 are fetched.
+/// GitHub's search returns at most 1,000 results: 10 pages of 100.
+const MAX_PAGES: usize = 10;
+
+/// A host's open PRs in a section, and whether that is all of them.
+pub(crate) struct HostPulls {
+    pub(crate) pulls: Vec<PullSummary>,
+    /// The forge said its results were incomplete, or there were more than
+    /// Docent fetched.
+    pub(crate) incomplete: bool,
+}
+
+/// The path of the next page of a search, relative to `api_base`, or `None`
+/// when `next` points anywhere but this host's search. The token goes with
+/// every request, so a link elsewhere is never followed.
+fn next_search_path(api_base: &str, next: &str) -> Option<String> {
+    let rest = next.strip_prefix(api_base.trim_end_matches('/'))?;
+    rest.starts_with("/search/issues?")
+        .then(|| rest.to_string())
+}
+
+/// The open PRs in `section` on `host`, following `next` links up to
+/// GitHub's 1,000-result limit. Each page has `timeout` to answer.
 pub(crate) async fn search(
     host: &Host,
     api_base: &str,
     token: &Token,
     section: Section,
-) -> Result<Vec<PullSummary>, ConnectError> {
-    let results: SearchResults = get(host, api_base, token, search_path(section))
-        .await
-        .map_err(|err| err.into_connect(host))?;
-    Ok(results
-        .items
-        .into_iter()
-        .filter_map(|item| item.into_pull(host))
-        .collect())
+    timeout: Duration,
+) -> Result<HostPulls, ConnectError> {
+    let mut pulls = Vec::new();
+    let mut fetched: u64 = 0;
+    let mut incomplete = false;
+    let mut next = Some(search_path(section).to_string());
+    for _ in 0..MAX_PAGES {
+        let Some(path) = next.take() else { break };
+        let page: Page<SearchItem> =
+            tokio::time::timeout(timeout, get(host, api_base, token, &path))
+                .await
+                .map_err(|_| ConnectError::Unreachable {
+                    host: host.as_str().to_string(),
+                    reason: format!("no answer within {} seconds", timeout.as_secs()),
+                })?
+                .map_err(|err| err.into_connect(host))?;
+        fetched += page.items.len() as u64;
+        incomplete |= page.incomplete_results == Some(true)
+            || page.total_count.is_some_and(|total| total > fetched) && page.next.is_none();
+        if let Some(link) = &page.next {
+            next = next_search_path(api_base, &link.to_string());
+            // A next page Docent won't ask for is a page missing.
+            incomplete |= next.is_none();
+        }
+        pulls.extend(
+            page.items
+                .into_iter()
+                .filter_map(|item| item.into_pull(host)),
+        );
+    }
+    // Still a page to go after the last one Docent fetches.
+    incomplete |= next.is_some();
+    Ok(HostPulls { pulls, incomplete })
 }
 
 /// Fetches a repo with `GET /repos/{owner}/{name}`. `RepoName` only holds
