@@ -35,7 +35,8 @@ const { sections, selected } = storeToRefs(inbox);
           <span
             v-if="sections[section].loaded && !sections[section].error"
             class="shrink-0 text-xs text-muted-foreground tabular-nums"
-          >{{ sections[section].pulls.length }}</span>
+            :title="sections[section].failures.length ? 'Not every host answered, so there may be more.' : undefined"
+          >{{ sections[section].pulls.length }}<template v-if="sections[section].failures.length">+</template></span>
         </button>
       </li>
     </ul>

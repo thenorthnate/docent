@@ -152,6 +152,21 @@ describe("InboxSections", () => {
     expect(list.get("[role=alert]").text()).toContain("Could not reach ghe.corp.test");
   });
 
+  it("marks a count as a lower bound when some hosts couldn't be asked", async () => {
+    mockCore({
+      authored: {
+        pulls: [pull("Mine")],
+        failures: [{ host: "ghe.corp.test", error: { kind: "unreachable", message: "Could not reach ghe.corp.test" } }],
+      },
+    });
+
+    const { drawer } = await mountInbox();
+
+    expect(sections(drawer)).toEqual(["Review requested 0", "Assigned 0", "Authored by me 1+", "Mentioned 0"]);
+    const authored = drawer.findAll("[data-testid=inbox-section]")[2];
+    expect(authored.get("[title]").attributes("title")).toContain("Not every host answered");
+  });
+
   it("shows no count for a section that couldn't be read, and its message when selected", async () => {
     mockCore({
       review_requested: { pulls: [pull("Requested")] },
