@@ -38,7 +38,8 @@ const emit = defineEmits<{ open: [pull: PullSummary] }>();
         v-if="pull.body?.trim()"
         data-testid="pr-description"
         class="text-sm break-words whitespace-pre-wrap"
-      >{{ pull.body }}</p>
+        v-text="pull.body"
+      />
       <p
         v-else
         class="text-sm text-muted-foreground italic"
