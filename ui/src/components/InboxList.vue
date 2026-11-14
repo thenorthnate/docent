@@ -3,10 +3,14 @@ import { computed, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
+import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
-const { pulls, failures, error, hasWatchedRepos, loading } = storeToRefs(inbox);
+const { selectedSection, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
+const pulls = computed(() => selectedSection.value.pulls);
+const failures = computed(() => selectedSection.value.failures);
+const error = computed(() => selectedSection.value.error);
 
 /** Rows name their host only when the PRs span more than one. */
 const showHost = computed(() => new Set(pulls.value.map((pr) => pr.host)).size > 1);
@@ -16,20 +20,20 @@ onMounted(inbox.load);
 
 <template>
   <section
-    aria-labelledby="review-requested-heading"
+    aria-labelledby="inbox-list-heading"
     class="space-y-2"
   >
     <div class="flex items-center justify-between gap-2">
       <h2
-        id="review-requested-heading"
+        id="inbox-list-heading"
         class="text-sm font-semibold"
       >
-        Review requested
+        {{ SECTION_LABELS[selected] }}
       </h2>
       <Button
         variant="ghost"
         size="xs"
-        aria-label="Refresh review requests"
+        aria-label="Refresh inbox"
         :disabled="loading"
         @click="inbox.load"
       >
@@ -40,7 +44,7 @@ onMounted(inbox.load);
       v-if="hasWatchedRepos === false"
       class="text-sm text-muted-foreground"
     >
-      Watch a repo in the drawer to see its review requests here.
+      Watch a repo in the drawer to see its PRs here.
     </p>
     <template v-else-if="hasWatchedRepos">
       <!-- Every field below came from the forge: text interpolation only, never v-html. -->
@@ -51,7 +55,7 @@ onMounted(inbox.load);
         <li
           v-for="pr in pulls"
           :key="`${pr.host}/${pr.owner}/${pr.repo}#${pr.number}`"
-          data-testid="review-requested-row"
+          data-testid="inbox-row"
           class="flex items-baseline gap-3 px-3 py-2 text-sm"
         >
           <span class="min-w-0 flex-1 truncate font-medium">{{ pr.title }}</span>
@@ -71,7 +75,7 @@ onMounted(inbox.load);
         v-else-if="!failures.length && !error"
         class="text-sm text-muted-foreground"
       >
-        No review requests in your watched repos.
+        {{ SECTION_EMPTY[selected] }}
       </p>
     </template>
     <div

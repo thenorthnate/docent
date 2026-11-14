@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InboxSections from "@/components/InboxSections.vue";
 import WatchedRepos from "@/components/WatchedRepos.vue";
 </script>
 
@@ -7,6 +8,7 @@ import WatchedRepos from "@/components/WatchedRepos.vue";
     <h2 class="text-sm font-semibold">
       Inbox
     </h2>
+    <InboxSections />
     <WatchedRepos />
   </div>
 </template>

@@ -44,6 +44,7 @@ describe("App shell", () => {
     expect(router.currentRoute.value.path).toBe("/inbox");
     expect(railButton(wrapper, "Inbox").attributes("aria-current")).toBe("page");
     expect(wrapper.get('[data-testid="drawer"]').text()).toContain("Inbox");
+    expect(wrapper.get('[data-testid="drawer"]').text()).toContain("Authored by me");
     expect(wrapper.get("main h1").text()).toBe("Inbox");
     expect(wrapper.get("main").text()).toContain("Review requested");
   });
