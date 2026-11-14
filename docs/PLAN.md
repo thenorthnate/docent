@@ -161,11 +161,40 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent reads `PA
 
 - Layout: mail split. Sections and watched repos in the drawer (see 5.4), the PR list in the middle, and a preview of the selected PR on the right: what changed since your last review, the AI summary, lens results, and trust. **Open review** or a double-click opens it ([UI mockups](spikes/ui-mockups.md)).
 - Sections: **Review requested**, **Assigned**, **Authored by me**, **Mentioned**, **Pinned**, all limited to watched repos.
+- Two quiet groups sit under Review requested: **Waiting on author** and **Could review**. Together with Review requested they make the **review lifecycle** below, and each PR is in exactly one of the three. The other sections are separate views and may repeat a PR.
 - One quiet line for what's filtered out, e.g. "2 review requests in unwatched repos", with a **Watch** button.
 - A watched repo with no local clone shows **Bind** and **Clone**.
 - Per row: title, repo, author, CI status, review state, size and age.
 - **M4**: an **"updated since your last review"** badge with counts (`+3 commits · 5 comments`). It needs the review state from 5.3, which arrives in M4.
 - Filters and saved views. Keyboard navigation (j/k, enter).
+
+#### Review lifecycle (M1)
+
+GitHub's `review-requested:@me` drops a PR as soon as you submit any review, and only brings it back on an explicit **Re-request review**. Team requests vanish when a teammate reviews or auto-assignment picks someone else. So Docent doesn't trust the request alone. Every open PR in a watched repo that you didn't author goes in the first group that fits:
+
+1. **Review requested**: you or one of your teams is currently requested, **or** you reviewed it and the **author has acted since**. A PR that's here because the author acted, not because of a request, shows an **"updated since your review"** marker (the M4 badge adds the counts).
+2. **Waiting on author**: you reviewed it (approve, request changes, or comment) and the author hasn't acted since, **or** you moved it here by hand and the author hasn't acted since.
+3. **Could review**: every other open, non-draft PR.
+
+**The author has acted** means at least one of these happened after your latest review (or after you moved the PR by hand):
+
+- the head commit is not the one your latest review was on (`commit_id` of the review), or new commits arrived after the manual move;
+- the author commented or replied on the PR;
+- for a manual move only: a review request to you or your team made after the move (GraphQL `ReviewRequestedEvent.createdAt`). For a submitted review this is already covered, since GitHub cleared the old request.
+
+Other reviewers' comments and approvals don't count. They show as review state on the row.
+
+**Moving a PR by hand.** Rows in Review requested and Could review have a **Waiting on author** button, for when the conversation happened offline or the author said "will do". Docent stores the time and head commit locally, per PR. It's never written to GitHub and doesn't sync between machines. A PR moved by hand shows **Back to inbox** in Waiting on author, which deletes the record. A PR waiting because of a real review has no such button: only the author acting brings it back.
+
+Merged and closed PRs leave all three groups, since every search is `is:open`. Manual-move records for them can be pruned.
+
+**Queries, per host** (all paginated as in #36):
+
+- `is:pr is:open archived:false review-requested:@me` (already in place)
+- `is:pr is:open archived:false reviewed-by:@me -author:@me`
+- `is:pr is:open archived:false draft:false -author:@me repo:…` over the watched repos on that host, for Could review
+
+For PRs in the second search, Docent fetches your latest review's commit and time, the head commit, and the author's latest comment time, to apply the rule above.
 
 ### 5.3 Change tracking
 
@@ -415,6 +444,7 @@ repos(id, account_id, owner, name, default_branch, local_path NULL, watched BOOL
 trust(id, repo_id, scope, ref NULL, pr_id NULL, head_sha NULL, granted_at)   -- scope: repo | branch | pr
 pull_requests(id, repo_id, number, title, author, state, is_draft, is_fork, head_sha, base_sha, updated_at, raw_json)
 review_state(pr_id, last_reviewed_sha, last_seen_event_at, viewed_files_json)
+waiting_on_author(pr_id, moved_at, head_sha)                  -- manual "Waiting on author" (5.2); local only
 events(id, pr_id, kind, actor, created_at, seen BOOL)          -- commits, comments, reviews, CI
 agent_profiles(id, name, command, args_json, env_json, mcp_allowlist_json,
                permission_mode, allow_writes BOOL, allow_shell BOOL, allow_web_search BOOL, allow_web_fetch BOOL)
@@ -450,7 +480,7 @@ Each milestone is a set of short-lived branches off `main`.
 | **M0.5** | **Work-laptop proof** (gate) | A plain Tauri window, built from source on the work laptop: token from `gh`, one watched repo's PRs, worktree, plain diff, one Explain through `kiro-cli acp`. Also tests a malicious `.kiro/` folder, Jira tools under the restricted Kiro agent, MCP injection (for information only), and whether a restricted Kiro agent can run one allowlisted shell command. **Done: go** ([write-up](spikes/work-laptop-proof.md)). The restricted-agent questions move to M2. |
 | **M0** | **Viewer spike** | Monaco vs CodeMirror 6 on macOS: gutter decorations, hover `?` at the far right, large-file performance, rendering moved blocks (within and across files), plus a one-off WebKitGTK load test. Pick one. **Done: CodeMirror 6** ([write-up](spikes/viewer-choice.md)). |
 | **UI** | **UI mockups** | Throwaway mockups of the shell, inbox, PR view, Explore, Projects and Settings, to fix the layout before M1. **Done: activity bar, mail-split inbox, three-pane review** ([write-up](spikes/ui-mockups.md)). |
-| **M1** | GitHub inbox + read-only PR view | Auth via `gh`, watched repos, Bind/Clone, inbox, PR overview, diff viewer, worktree lifecycle, CSP. Tracked in [#10](https://github.com/thenorthnate/docent/issues/10) |
+| **M1** | GitHub inbox + read-only PR view | Auth via `gh`, watched repos, Bind/Clone, inbox with review lifecycle, PR overview, diff viewer, worktree lifecycle, CSP. Tracked in [#10](https://github.com/thenorthnate/docent/issues/10) |
 | **M2** | Explain + trust + agent settings | Trust model, profiles and detection, tool policy, Explain, PR summary, Chat, activity drawer |
 | **M3** | Review lenses | Bugs, Style, Modernize & lint; findings in gutter and file tree; fingerprints; caching; lens files; lens management (global library, repo lens sets, custom lenses, tombstones, toggles, Run anyway) |
 | **M4** | Commenting, reviews, since-last-review | Pending review, promote finding, submit, threads, review state, "updated since your last review" inbox badge, interdiff/range-diff, new-comment highlighting, moved-code detection, steering (staging, scope, UI, citations) |

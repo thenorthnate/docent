@@ -168,3 +168,20 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 |---|---|
 | When the `gh` token is read | When you connect a host, and again at startup for each remembered host (#13). Only the host name and login are stored, never the token. The startup reconnect runs in the background; commands that need accounts wait for it. It only reads the login shell's `PATH` when there is a host to reconnect. A host that fails stays listed with its error rather than being forgotten |
 | Login shell environment | Only `PATH` is read from the login shell, and only its absolute entries. It is passed to child processes explicitly; Docent's own environment is not changed |
+
+### Added while designing the review lifecycle
+
+GitHub's `review-requested:@me` drops a PR once you review it, and team requests vanish when a teammate picks them up, so PRs disappeared from the inbox while still needing you. See the review lifecycle in `PLAN.md` 5.2.
+
+| Topic | Decision |
+|---|---|
+| Reviewed PRs | Tracked with a second search, `reviewed-by:@me -author:@me`. They wait in **Waiting on author** and come back to Review requested when the author acts, re-request or not |
+| "Author acted" | New commits since your latest review's commit, or an author comment or reply after it. Other reviewers' activity doesn't count |
+| Your approval | Counts as a review: the PR waits, and comes back if the author acts afterward |
+| Other people's approvals | Don't move a PR. They show as review state on the row |
+| Team PRs nobody asked you for | A quiet **Could review** group: every open, non-draft PR in a watched repo you didn't author and haven't reviewed. Reviewing one moves it to Waiting on author |
+| Precedence | Review requested, then Waiting on author, then Could review. Each PR in exactly one; other sections may repeat it |
+| Merged or closed | Leaves every group |
+| Manual "Waiting on author" | Local only, never written to GitHub. Comes back on author commits, author comments, or a fresh review request after the move. **Back to inbox** undoes it |
+| "Updated since your review" marker | In M1, without counts. The counted badge stays in M4 |
+| Parked idea E3 (re-review on author reply) | Partly taken up: a reply brings the PR back to the inbox. Re-running lenses on a reply stays parked |
