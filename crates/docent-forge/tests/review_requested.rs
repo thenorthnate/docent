@@ -216,19 +216,21 @@ async fn a_host_that_does_not_answer_times_out_and_the_others_still_show() {
     let enterprise = github_for("gho_secret_b", "mona").await;
     Mock::given(method("GET"))
         .and(path("/search/issues"))
-        .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(30)))
+        .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(60)))
         .mount(&enterprise)
         .await;
     let accounts = accounts_against(vec![
         ("github.com", &public),
         ("ghe.corp.test", &enterprise),
     ])
-    .with_request_timeout(std::time::Duration::from_millis(200));
+    // The timeout covers the healthy host too, so it must be generous enough
+    // for a slow CI runner; the silent host waits far longer than that.
+    .with_request_timeout(std::time::Duration::from_secs(2));
     accounts.connect("github.com", &gh.cli()).await.unwrap();
     accounts.connect("ghe.corp.test", &gh.cli()).await.unwrap();
 
     let found = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(20),
         accounts.review_requested(),
     )
     .await
