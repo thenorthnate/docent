@@ -80,25 +80,7 @@ async fn review_requested_prs_come_back_with_title_repo_author_and_age() {
                 None
             ),
         ],
-        "the item whose repository_url isn't a plain owner/name is dropped"
-    );
-}
-
-#[tokio::test]
-async fn each_pr_comes_back_with_its_description_or_none() {
-    let gh = FakeGh::with_tokens(&[("github.com", "gho_secret_a")]);
-    let api = github_for("gho_secret_a", "octocat").await;
-    search_answers(&api, "gho_secret_a", SEARCH_JSON).await;
-    let accounts = accounts_against(vec![("github.com", &api)]);
-    accounts.connect("github.com", &gh.cli()).await.unwrap();
-
-    let found = accounts.search(Section::ReviewRequested).await;
-
-    let bodies: Vec<_> = found.pulls.iter().map(|p| p.body.as_deref()).collect();
-    assert_eq!(
-        bodies,
-        vec![Some("Say hello properly.\n\nFixes #12."), None],
-        "a PR with no description has a null body"
+        "a missing description is None, and the item whose repository_url isn't a plain owner/name is dropped"
     );
 }
 

@@ -36,13 +36,13 @@ const pulls = [
   pull(3, "Polish the spoon"),
 ];
 
-async function mountPage() {
+async function mountPage(listed: PullSummary[] = pulls) {
   mockIPC((cmd) => {
     switch (cmd) {
       case "list_watched_repos":
         return [watchedRepo];
       case "list_section":
-        return { pulls, failures: [] };
+        return { pulls: listed, failures: [] };
       default:
         throw new Error(`unexpected command: ${cmd}`);
     }
@@ -101,6 +101,17 @@ describe("InboxPage", () => {
     expect(shown.get("[data-testid=pr-description]").text()).toBe("Say hello properly.\n\nFixes #12.");
   });
 
+  it("shows a description written as HTML as literal text", async () => {
+    const hostile = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
+    const { wrapper } = await mountPage([pull(9, "Hostile", { body: hostile })]);
+
+    await row(wrapper, "Hostile").trigger("click");
+
+    const description = preview(wrapper).get("[data-testid=pr-description]");
+    expect(description.text()).toBe(hostile);
+    expect(description.element.children).toHaveLength(0);
+  });
+
   it("says so when the PR has no description, and when nothing is selected", async () => {
     const { wrapper } = await mountPage();
     expect(preview(wrapper).text()).toBe("Select a pull request to preview it.");
@@ -129,6 +140,20 @@ describe("InboxPage", () => {
     await press("k");
     await press("k");
     expect(selectedTitle(wrapper)).toContain("Fix the greeting");
+  });
+
+  it("moves the selection with the arrow keys too, and the list points at the selected row", async () => {
+    const { wrapper } = await mountPage();
+
+    await press("ArrowDown");
+    await press("ArrowDown");
+    await press("ArrowUp");
+    await press("ArrowDown");
+
+    expect(selectedTitle(wrapper)).toContain("Sharpen the knife");
+    const listbox = wrapper.get("[role=listbox]");
+    expect(listbox.attributes("tabindex")).toBe("0");
+    expect(wrapper.get(`#${listbox.attributes("aria-activedescendant")}`).text()).toContain("Sharpen the knife");
   });
 
   it("leaves j and k alone while typing or with a modifier held", async () => {
