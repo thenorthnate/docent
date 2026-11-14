@@ -108,4 +108,58 @@ describe("InboxSections", () => {
     expect(list.get("h2").text()).toBe("Mentioned");
     expect(rows(list).map((r) => r.text())).toEqual([expect.stringContaining("Mentions you")]);
   });
+
+  it.each([
+    ["Assigned", "No PRs assigned to you"],
+    ["Authored by me", "You have no open PRs"],
+    ["Mentioned", "No PRs mention you"],
+  ])("says when %s is empty", async (label, empty) => {
+    mockCore({ review_requested: { pulls: [pull("Requested")] } });
+    const { drawer, list } = await mountInbox();
+
+    await select(drawer, label);
+
+    expect(rows(list)).toHaveLength(0);
+    expect(list.text()).toContain(empty);
+    expect(list.text()).not.toContain("No review requests");
+  });
+
+  it("asks for a watched repo in every section, without naming review requests", async () => {
+    mockCore({}, []);
+    const { drawer, list } = await mountInbox();
+
+    await select(drawer, "Assigned");
+
+    expect(list.text()).toContain("Watch a repo in the drawer");
+    expect(list.text()).not.toContain("review requests");
+  });
+
+  it("shows a section's host failures, and doesn't claim it is empty", async () => {
+    mockCore({
+      authored: {
+        pulls: [pull("Mine")],
+        failures: [{ host: "ghe.corp.test", error: { kind: "unreachable", message: "Could not reach ghe.corp.test" } }],
+      },
+    });
+    const { drawer, list } = await mountInbox();
+    expect(list.find("[role=alert]").exists()).toBe(false);
+
+    await select(drawer, "Authored by me");
+
+    expect(rows(list)).toHaveLength(1);
+    expect(list.get("[role=alert]").text()).toContain("Could not reach ghe.corp.test");
+  });
+
+  it("shows no count for a section that couldn't be read, and its message when selected", async () => {
+    mockCore({
+      review_requested: { pulls: [pull("Requested")] },
+      assigned: { fail: { kind: "database", message: "locked" } },
+    });
+    const { drawer, list } = await mountInbox();
+
+    expect(sections(drawer)).toEqual(["Review requested 1", "Assigned", "Authored by me 0", "Mentioned 0"]);
+    await select(drawer, "Assigned");
+    expect(list.get("[role=alert]").text()).toBe("locked");
+    expect(list.text()).not.toContain("No PRs assigned to you");
+  });
 });

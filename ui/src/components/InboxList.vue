@@ -3,7 +3,7 @@ import { computed, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
-import { SECTION_LABELS } from "@/lib/sections";
+import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
@@ -44,7 +44,7 @@ onMounted(inbox.load);
       v-if="hasWatchedRepos === false"
       class="text-sm text-muted-foreground"
     >
-      Watch a repo in the drawer to see its review requests here.
+      Watch a repo in the drawer to see its PRs here.
     </p>
     <template v-else-if="hasWatchedRepos">
       <!-- Every field below came from the forge: text interpolation only, never v-html. -->
@@ -75,7 +75,7 @@ onMounted(inbox.load);
         v-else-if="!failures.length && !error"
         class="text-sm text-muted-foreground"
       >
-        No review requests in your watched repos.
+        {{ SECTION_EMPTY[selected] }}
       </p>
     </template>
     <div
