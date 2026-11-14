@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { storeToRefs } from "pinia";
+import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
-const { pulls, failures, error, hasWatchedRepos } = storeToRefs(inbox);
+const { pulls, failures, error, hasWatchedRepos, loading } = storeToRefs(inbox);
 
 onMounted(inbox.load);
 </script>
@@ -15,12 +16,23 @@ onMounted(inbox.load);
     aria-labelledby="review-requested-heading"
     class="space-y-2"
   >
-    <h2
-      id="review-requested-heading"
-      class="text-sm font-semibold"
-    >
-      Review requested
-    </h2>
+    <div class="flex items-center justify-between gap-2">
+      <h2
+        id="review-requested-heading"
+        class="text-sm font-semibold"
+      >
+        Review requested
+      </h2>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-label="Refresh review requests"
+        :disabled="loading"
+        @click="inbox.load"
+      >
+        {{ loading ? "Refreshing…" : "Refresh" }}
+      </Button>
+    </div>
     <p
       v-if="hasWatchedRepos === false"
       class="text-sm text-muted-foreground"

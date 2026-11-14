@@ -25,11 +25,13 @@ export const useInboxStore = defineStore("inbox", () => {
   const pulls = ref<PullSummary[]>([]);
   const failures = ref<HostFailure[]>([]);
   const error = ref<string | null>(null);
+  const loading = ref(false);
   /** Whether any repo is watched; `null` until the first load. */
   const hasWatchedRepos = ref<boolean | null>(null);
 
   /** Reads the watched repos, then, if there are any, the forge's review requests. */
   async function load() {
+    loading.value = true;
     try {
       const watched = await invoke<unknown[]>("list_watched_repos");
       hasWatchedRepos.value = watched.length > 0;
@@ -45,8 +47,10 @@ export const useInboxStore = defineStore("inbox", () => {
       error.value = null;
     } catch (err) {
       error.value = messageOf(err);
+    } finally {
+      loading.value = false;
     }
   }
 
-  return { pulls, failures, error, hasWatchedRepos, load };
+  return { pulls, failures, error, hasWatchedRepos, loading, load };
 });

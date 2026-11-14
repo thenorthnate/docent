@@ -132,4 +132,19 @@ describe("ReviewRequestedList", () => {
     expect(wrapper.get("[role=alert]").text()).toBe("Docent's database failed: locked");
     expect(wrapper.text()).not.toContain("No review requests");
   });
+
+  it("asks again on Refresh", async () => {
+    const state = { repos: [watchedRepo], pulls: [pull()] };
+    mockCore(state);
+    const wrapper = await mountList();
+
+    state.pulls = [pull(), pull({ number: 7, title: "Another one" })];
+    await wrapper.get("button[aria-label='Refresh review requests']").trigger("click");
+    await flushPromises();
+
+    expect(rows(wrapper).map((r) => r.text())).toEqual([
+      expect.stringContaining("Fix the greeting"),
+      expect.stringContaining("Another one"),
+    ]);
+  });
 });
