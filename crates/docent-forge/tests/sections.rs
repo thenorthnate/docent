@@ -31,9 +31,15 @@ async fn each_section_sends_its_own_search() {
             Section::ReviewRequested,
             "is:pr is:open archived:false review-requested:@me",
         ),
-        (Section::Assigned, "is:pr is:open archived:false assignee:@me"),
+        (
+            Section::Assigned,
+            "is:pr is:open archived:false assignee:@me",
+        ),
         (Section::Authored, "is:pr is:open archived:false author:@me"),
-        (Section::Mentioned, "is:pr is:open archived:false mentions:@me"),
+        (
+            Section::Mentioned,
+            "is:pr is:open archived:false mentions:@me",
+        ),
     ] {
         let gh = FakeGh::with_tokens(&[("github.com", "gho_secret_a")]);
         let api = github_for("gho_secret_a", "octocat").await;
@@ -52,10 +58,9 @@ async fn each_section_sends_its_own_search() {
 
 #[test]
 fn sections_arrive_from_the_ui_by_snake_case_name() {
-    let parsed: Vec<Section> = serde_json::from_str(
-        r#"["review_requested", "assigned", "authored", "mentioned"]"#,
-    )
-    .unwrap();
+    let parsed: Vec<Section> =
+        serde_json::from_str(r#"["review_requested", "assigned", "authored", "mentioned"]"#)
+            .unwrap();
 
     assert_eq!(
         parsed,

@@ -113,7 +113,9 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested).await.unwrap();
+        let found = section(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
         assert_eq!(numbers, vec![3, 1]);
@@ -139,7 +141,9 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested).await.unwrap();
+        let found = section(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
         assert_eq!(numbers, vec![2, 1]);
@@ -158,7 +162,9 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested).await.unwrap();
+        let found = section(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found.pulls.len(), 1);
     }
@@ -176,7 +182,9 @@ mod tests {
             vec![],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested).await.unwrap();
+        let found = section(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found.pulls, vec![]);
     }
@@ -194,7 +202,9 @@ mod tests {
             vec![failure("github.com")],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested).await.unwrap();
+        let found = section(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found, SectionPulls::default());
         assert_eq!(forge.asked(), vec![]);
@@ -208,7 +218,9 @@ mod tests {
             vec![failure("github.com"), failure("ghe.corp.test")],
         );
 
-        let found = section(&forge, &store, Section::ReviewRequested).await.unwrap();
+        let found = section(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found.failures, vec![failure("github.com")]);
     }
