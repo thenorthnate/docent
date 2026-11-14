@@ -10,7 +10,7 @@ const { sections, selected } = storeToRefs(inbox);
 function countCaveat(section: Section): string | undefined {
   const { failures, incomplete } = sections.value[section];
   if (failures.length) return "Not every host answered, so there may be more.";
-  if (incomplete.length) return "A host had more results than Docent can fetch, so there may be more.";
+  if (incomplete.length) return "A host didn't return all its results, so there may be more.";
   return undefined;
 }
 </script>

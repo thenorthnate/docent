@@ -109,7 +109,7 @@ onMounted(inbox.load);
         data-testid="inbox-incomplete"
         class="text-xs text-muted-foreground"
       >
-        {{ host }} has more results than Docent can fetch, so some PRs may be missing.
+        {{ host }} didn't return all its results, so some PRs may be missing.
       </p>
     </template>
     <div

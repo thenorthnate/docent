@@ -175,7 +175,7 @@ describe("InboxSections", () => {
 
     expect(sections(drawer)).toEqual(["Review requested 0", "Assigned 1+", "Authored by me 0", "Mentioned 0"]);
     const assigned = drawer.findAll("[data-testid=inbox-section]")[1];
-    expect(assigned.get("[title]").attributes("title")).toContain("more results than Docent can fetch");
+    expect(assigned.get("[title]").attributes("title")).toContain("didn't return all its results");
   });
 
   it("shows no count for a section that couldn't be read, and its message when selected", async () => {

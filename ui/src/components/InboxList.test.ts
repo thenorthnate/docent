@@ -143,7 +143,7 @@ describe("InboxList", () => {
     expect(rows(wrapper)).toHaveLength(1);
     expect(wrapper.find("[role=alert]").exists()).toBe(false);
     expect(wrapper.get("[data-testid=inbox-incomplete]").text()).toBe(
-      "github.com has more results than Docent can fetch, so some PRs may be missing.",
+      "github.com didn't return all its results, so some PRs may be missing.",
     );
   });
 
