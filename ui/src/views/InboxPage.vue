@@ -10,13 +10,14 @@ import { useInboxStore, type PullSummary } from "@/stores/inbox";
 const router = useRouter();
 const { pulls } = storeToRefs(useInboxStore());
 const selectedKey = ref<string | null>(null);
+const selectedIndex = computed(() => pulls.value.findIndex((pr) => pullKey(pr) === selectedKey.value));
 /** The selected PR, or `null` once a reload no longer lists it. */
-const selected = computed(() => pulls.value.find((pr) => pullKey(pr) === selectedKey.value) ?? null);
+const selected = computed(() => pulls.value[selectedIndex.value] ?? null);
 
 /** Moves the selection by `step` rows, from the top when nothing is selected, stopping at the ends. */
 function move(step: number) {
   if (!pulls.value.length) return;
-  const at = pulls.value.findIndex((pr) => pullKey(pr) === selectedKey.value);
+  const at = selectedIndex.value;
   const next = at === -1 ? 0 : Math.min(Math.max(at + step, 0), pulls.value.length - 1);
   selectedKey.value = pullKey(pulls.value[next]);
 }
