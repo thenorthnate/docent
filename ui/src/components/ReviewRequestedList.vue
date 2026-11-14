@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
@@ -7,6 +7,9 @@ import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
 const { pulls, failures, error, hasWatchedRepos, loading } = storeToRefs(inbox);
+
+/** Rows name their host only when the PRs span more than one. */
+const showHost = computed(() => new Set(pulls.value.map((pr) => pr.host)).size > 1);
 
 onMounted(inbox.load);
 </script>
@@ -52,7 +55,9 @@ onMounted(inbox.load);
           class="flex items-baseline gap-3 px-3 py-2 text-sm"
         >
           <span class="min-w-0 flex-1 truncate font-medium">{{ pr.title }}</span>
-          <span class="shrink-0 text-muted-foreground">{{ pr.owner }}/{{ pr.repo }}</span>
+          <span class="shrink-0 text-muted-foreground">
+            <template v-if="showHost">{{ pr.host }}:</template>{{ pr.owner }}/{{ pr.repo }}
+          </span>
           <span class="shrink-0 text-muted-foreground">{{ pr.author }}</span>
           <time
             class="w-16 shrink-0 text-right text-muted-foreground tabular-nums"

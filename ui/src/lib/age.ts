@@ -2,11 +2,13 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const WEEK = 7 * DAY;
+const MONTH = 30 * DAY;
 const YEAR = 365 * DAY;
 
 /** The largest unit first, so the age reads in the biggest whole unit. */
 const UNITS: Array<[number, string]> = [
   [YEAR, "y"],
+  [MONTH, "mo"],
   [WEEK, "w"],
   [DAY, "d"],
   [HOUR, "h"],
@@ -14,7 +16,7 @@ const UNITS: Array<[number, string]> = [
 ];
 
 /**
- * How long ago `timestamp` was, compactly ("5m", "3h", "3d", "6w", "1y"), as
+ * How long ago `timestamp` was, compactly ("5m", "3h", "3d", "3w", "2mo", "1y"), as
  * an inbox row shows it. The timestamp comes from the forge, so one that
  * can't be read shows nothing, and one in the future (clock skew) reads as
  * "just now".

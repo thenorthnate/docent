@@ -4,6 +4,7 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createPinia } from "pinia";
 import ReviewRequestedList from "./ReviewRequestedList.vue";
 import WatchedRepos from "./WatchedRepos.vue";
+import { useInboxStore } from "@/stores/inbox";
 
 type Pull = {
   host: string;
@@ -187,5 +188,56 @@ describe("ReviewRequestedList", () => {
     await flushPromises();
 
     expect(rows(list)).toHaveLength(action === "watch" ? 1 : 0);
+  });
+
+  it("keeps the newest answer when an older, slower load finishes last", async () => {
+    let releaseSlow: (value: unknown) => void = () => {};
+    let call = 0;
+    mockIPC((cmd) => {
+      if (cmd === "list_watched_repos") return [watchedRepo];
+      call += 1;
+      if (call === 1) return { pulls: [], failures: [] };
+      if (call === 2) return new Promise((resolve) => (releaseSlow = resolve));
+      return { pulls: [pull({ title: "Newest" })], failures: [] };
+    });
+    const wrapper = await mountList();
+    const refresh = () => useInboxStore().load();
+
+    const slow = refresh();
+    await flushPromises();
+    await refresh();
+    releaseSlow({ pulls: [pull({ title: "Stale" })], failures: [] });
+    await slow;
+    await flushPromises();
+
+    expect(rows(wrapper).map((r) => r.text())).toEqual([expect.stringContaining("Newest")]);
+    expect(useInboxStore().loading).toBe(false);
+  });
+
+  it("drops the old rows when a reload fails, rather than showing them as current", async () => {
+    const state: Parameters<typeof mockCore>[0] = { repos: [watchedRepo], pulls: [pull()] };
+    mockCore(state);
+    const wrapper = await mountList();
+
+    state.fail = { kind: "database", message: "locked" };
+    await wrapper.get("button[aria-label='Refresh review requests']").trigger("click");
+    await flushPromises();
+
+    expect(rows(wrapper)).toHaveLength(0);
+    expect(wrapper.get("[role=alert]").text()).toBe("locked");
+  });
+
+  it("names each row's host when the PRs span hosts", async () => {
+    mockCore({
+      repos: [watchedRepo],
+      pulls: [pull(), pull({ host: "ghe.corp.test", number: 2 })],
+    });
+
+    const wrapper = await mountList();
+
+    expect(rows(wrapper).map((r) => r.text())).toEqual([
+      expect.stringContaining("github.com"),
+      expect.stringContaining("ghe.corp.test"),
+    ]);
   });
 });

@@ -29,26 +29,37 @@ export const useInboxStore = defineStore("inbox", () => {
   /** Whether any repo is watched; `null` until the first load. */
   const hasWatchedRepos = ref<boolean | null>(null);
 
-  /** Reads the watched repos, then, if there are any, the forge's review requests. */
+  /** Counts loads, so only the latest one started may write its answer. */
+  let latest = 0;
+
+  /**
+   * Reads the watched repos, then, if there are any, the forge's review
+   * requests. A load can take a while (each host has its own timeout), so
+   * if another starts meanwhile, the older one's answer is dropped.
+   */
   async function load() {
+    const id = ++latest;
+    const current = () => id === latest;
     loading.value = true;
     try {
       const watched = await invoke<unknown[]>("list_watched_repos");
+      if (!current()) return;
       hasWatchedRepos.value = watched.length > 0;
-      if (!hasWatchedRepos.value) {
-        pulls.value = [];
-        failures.value = [];
-        error.value = null;
-        return;
-      }
-      const found = await invoke<ReviewRequested>("list_review_requested");
+      const found = hasWatchedRepos.value
+        ? await invoke<ReviewRequested>("list_review_requested")
+        : { pulls: [], failures: [] };
+      if (!current()) return;
       pulls.value = found.pulls;
       failures.value = found.failures;
       error.value = null;
     } catch (err) {
+      if (!current()) return;
+      // Rows from an earlier load may no longer be right, so don't keep them.
+      pulls.value = [];
+      failures.value = [];
       error.value = messageOf(err);
     } finally {
-      loading.value = false;
+      if (current()) loading.value = false;
     }
   }
 
