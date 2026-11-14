@@ -24,6 +24,7 @@ tauri = { version = "2", features = [] }
 tokio = { version = "1", features = ["process", "sync", "time"] }
 
 [dev-dependencies]
+docent-forge = { path = "../crates/docent-forge", features = ["fake"] }
 serde_json = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

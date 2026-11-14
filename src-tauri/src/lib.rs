@@ -1,4 +1,5 @@
 mod command_error;
+mod inbox;
 mod remember;
 mod shell_env;
 mod watch;
@@ -8,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use command_error::CommandError;
-use docent_forge::{AccountSummary, Accounts, GhCli};
+use docent_forge::{AccountSummary, Accounts, GhCli, ReviewRequested};
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{Manager, State};
 use tokio::sync::OnceCell;
@@ -106,6 +107,17 @@ async fn unwatch_repo(id: RepoId, store: State<'_, Store>) -> Result<(), Command
     Ok(store.unwatch_repo(id).await?)
 }
 
+/// Open PRs that request the user's review, in watched repos, from every
+/// connected host, newest first. Hosts that couldn't be asked are listed
+/// with their errors.
+#[tauri::command]
+async fn list_review_requested(
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<ReviewRequested, CommandError> {
+    inbox::review_requested(state.accounts(&store).await, &store).await
+}
+
 /// The app version, shown in the UI so a bug report can name it.
 ///
 /// `env!` reads `CARGO_PKG_VERSION` at compile time. Cargo sets it from the
@@ -139,6 +151,7 @@ pub fn run() {
             app_version,
             connect_host,
             list_accounts,
+            list_review_requested,
             list_watched_repos,
             unwatch_repo,
             watch_repo

@@ -6,7 +6,7 @@ pub use repo_name::RepoName;
 
 use octocrab::Octocrab;
 
-use crate::{ConnectError, Host, Token};
+use crate::{ConnectError, Host, PullSummary, Token};
 
 #[derive(serde::Deserialize)]
 struct User {
@@ -80,20 +80,88 @@ async fn get<T: serde::de::DeserializeOwned>(
     }
 }
 
+impl ApiError {
+    /// For calls where a 404 has no meaning of its own.
+    fn into_connect(self, host: &Host) -> ConnectError {
+        match self {
+            Self::Connect(err) => err,
+            Self::NotFound => ConnectError::HttpStatus {
+                host: host.as_str().to_string(),
+                status: 404,
+            },
+        }
+    }
+}
+
 /// Fetches the login of the user `token` belongs to, with `GET /user`.
 pub(crate) async fn current_login(
     host: &Host,
     api_base: &str,
     token: &Token,
 ) -> Result<String, ConnectError> {
-    match get::<User>(host, api_base, token, "/user").await {
-        Ok(user) => Ok(user.login),
-        Err(ApiError::Connect(err)) => Err(err),
-        Err(ApiError::NotFound) => Err(ConnectError::HttpStatus {
+    get::<User>(host, api_base, token, "/user")
+        .await
+        .map(|user| user.login)
+        .map_err(|err| err.into_connect(host))
+}
+
+/// The search for open PRs that request the user's review, directly or
+/// through a team, newest update first. URL-encoded by hand because it never
+/// changes: `is:pr is:open archived:false review-requested:@me`.
+const REVIEW_REQUESTED_SEARCH: &str = "/search/issues\
+    ?q=is%3Apr+is%3Aopen+archived%3Afalse+review-requested%3A%40me\
+    &sort=updated&order=desc&per_page=100";
+
+#[derive(serde::Deserialize)]
+struct SearchResults {
+    items: Vec<SearchItem>,
+}
+
+/// The fields of a search result that an inbox row needs.
+#[derive(serde::Deserialize)]
+struct SearchItem {
+    repository_url: String,
+    number: u64,
+    title: String,
+    user: User,
+    created_at: String,
+}
+
+impl SearchItem {
+    /// The row for this result, or `None` when the last two segments of
+    /// `repository_url` aren't a plain `{owner}/{name}`. The response is
+    /// untrusted, so the repo goes through the same check as typed input.
+    fn into_pull(self, host: &Host) -> Option<PullSummary> {
+        let mut segments = self.repository_url.rsplitn(3, '/');
+        let (name, owner) = (segments.next()?, segments.next()?);
+        let repo = RepoName::parse(&format!("{owner}/{name}")).ok()?;
+        Some(PullSummary {
             host: host.as_str().to_string(),
-            status: 404,
-        }),
+            owner: repo.owner().to_string(),
+            repo: repo.name().to_string(),
+            number: self.number,
+            title: self.title,
+            author: self.user.login,
+            created_at: self.created_at,
+        })
     }
+}
+
+/// Open PRs on `host` that request the user's review. Only the first 100
+/// are fetched.
+pub(crate) async fn review_requested(
+    host: &Host,
+    api_base: &str,
+    token: &Token,
+) -> Result<Vec<PullSummary>, ConnectError> {
+    let results: SearchResults = get(host, api_base, token, REVIEW_REQUESTED_SEARCH)
+        .await
+        .map_err(|err| err.into_connect(host))?;
+    Ok(results
+        .items
+        .into_iter()
+        .filter_map(|item| item.into_pull(host))
+        .collect())
 }
 
 /// Fetches a repo with `GET /repos/{owner}/{name}`. `RepoName` only holds

@@ -3,13 +3,19 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use crate::github::{self, RepoName};
-use crate::{ConnectError, ForgeRepo, GhCli, Host, RepoError, Token};
+use crate::{
+    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, RepoError, ReviewRequested, Token,
+};
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 
 /// How long a startup reconnect waits for `gh` and the forge before giving
 /// up on a host, so one unreachable host can't stall the app.
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// How long an inbox search waits for one host before reporting it
+/// unreachable, so one host that stops answering can't hide the others.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A connected host as the UI sees it. It never holds the token.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -63,6 +69,7 @@ impl Connection {
 pub struct Accounts {
     api_base: ApiBase,
     restore_timeout: Duration,
+    request_timeout: Duration,
     by_host: Mutex<BTreeMap<Host, Connection>>,
 }
 
@@ -86,6 +93,7 @@ impl Accounts {
         Self {
             api_base: Box::new(api_base),
             restore_timeout: RESTORE_TIMEOUT,
+            request_timeout: REQUEST_TIMEOUT,
             by_host: Mutex::default(),
         }
     }
@@ -119,6 +127,14 @@ impl Accounts {
         let summary = connection.summary(&host);
         self.lock().insert(host, connection);
         Ok(summary)
+    }
+
+    /// How long an inbox search waits for each host. Tests shorten it.
+    pub fn with_request_timeout(self, timeout: Duration) -> Self {
+        Self {
+            request_timeout: timeout,
+            ..self
+        }
     }
 
     /// How long [`Accounts::restore`] waits for `gh` and the forge before
@@ -210,5 +226,51 @@ impl Accounts {
         // The map is only ever replaced whole-entry, so it stays consistent
         // even if a holder panicked.
         self.by_host.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Forge for Accounts {
+    async fn review_requested(&self) -> ReviewRequested {
+        let mut found = ReviewRequested::default();
+        // Copy what each host needs, so no lock is held across an API call.
+        let hosts: Vec<(Host, Result<Arc<Token>, ConnectError>)> = self
+            .lock()
+            .iter()
+            .map(|(host, connection)| {
+                let token = match connection {
+                    Connection::Connected(account) => Ok(Arc::clone(&account.token)),
+                    Connection::Failed { error, .. } => Err(error.clone()),
+                };
+                (host.clone(), token)
+            })
+            .collect();
+        for (host, token) in hosts {
+            let result = match token {
+                Ok(token) => {
+                    let api_base = (self.api_base)(&host);
+                    let search = github::review_requested(&host, &api_base, &token);
+                    tokio::time::timeout(self.request_timeout, search)
+                        .await
+                        .unwrap_or_else(|_| {
+                            Err(ConnectError::Unreachable {
+                                host: host.as_str().to_string(),
+                                reason: format!(
+                                    "no answer within {} seconds",
+                                    self.request_timeout.as_secs()
+                                ),
+                            })
+                        })
+                }
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(pulls) => found.pulls.extend(pulls),
+                Err(error) => found.failures.push(HostFailure {
+                    host: host.as_str().to_string(),
+                    error,
+                }),
+            }
+        }
+        found
     }
 }
