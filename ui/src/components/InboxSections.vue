@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { SECTION_LABELS, SECTIONS } from "@/lib/sections";
+import { SECTION_LABELS, SECTIONS, type Section } from "@/lib/sections";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
 const { sections, selected } = storeToRefs(inbox);
+
+/** Why a section's count may be short, or `undefined` when it is exact. */
+function countCaveat(section: Section): string | undefined {
+  const { failures, incomplete } = sections.value[section];
+  if (failures.length) return "Not every host answered, so there may be more.";
+  if (incomplete.length) return "A host had more results than Docent can fetch, so there may be more.";
+  return undefined;
+}
 </script>
 
 <template>
@@ -35,8 +43,8 @@ const { sections, selected } = storeToRefs(inbox);
           <span
             v-if="sections[section].loaded && !sections[section].error"
             class="shrink-0 text-xs text-muted-foreground tabular-nums"
-            :title="sections[section].failures.length ? 'Not every host answered, so there may be more.' : undefined"
-          >{{ sections[section].pulls.length }}<template v-if="sections[section].failures.length">+</template></span>
+            :title="countCaveat(section)"
+          >{{ sections[section].pulls.length }}<template v-if="countCaveat(section)">+</template></span>
         </button>
       </li>
     </ul>

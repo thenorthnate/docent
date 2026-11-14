@@ -41,16 +41,23 @@ function pull(overrides: Partial<Pull> = {}): Pull {
 }
 
 /** A fake Rust core whose answers the test can change between calls. */
-function mockCore(state: { pulls?: Pull[]; failures?: Failure[]; repos?: Repo[]; fail?: Failure["error"] }) {
+function mockCore(state: {
+  pulls?: Pull[];
+  failures?: Failure[];
+  incomplete?: string[];
+  repos?: Repo[];
+  fail?: Failure["error"];
+}) {
   const calls: string[] = [];
   mockIPC((cmd, args) => {
     calls.push(cmd);
     switch (cmd) {
       case "list_section":
         // These cases are about Review requested; the other sections stay empty.
-        if ((args as { section: string }).section !== "review_requested") return { pulls: [], failures: [] };
+        if ((args as { section: string }).section !== "review_requested")
+          return { pulls: [], failures: [], incomplete: [] };
         if (state.fail) throw state.fail;
-        return { pulls: state.pulls ?? [], failures: state.failures ?? [] };
+        return { pulls: state.pulls ?? [], failures: state.failures ?? [], incomplete: state.incomplete ?? [] };
       case "list_watched_repos":
         return state.repos ?? [];
       default:
@@ -126,6 +133,27 @@ describe("InboxList", () => {
     expect(rows(wrapper)).toHaveLength(1);
     expect(wrapper.get("[role=alert]").text()).toContain("Could not reach ghe.corp.test: timed out");
     expect(wrapper.text()).not.toContain("No review requests");
+  });
+
+  it("quietly notes a host whose results were cut short, without raising an alert", async () => {
+    mockCore({ repos: [watchedRepo], pulls: [pull()], incomplete: ["github.com"] });
+
+    const wrapper = await mountList();
+
+    expect(rows(wrapper)).toHaveLength(1);
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
+    expect(wrapper.get("[data-testid=inbox-incomplete]").text()).toBe(
+      "github.com has more results than Docent can fetch, so some PRs may be missing.",
+    );
+  });
+
+  it("doesn't claim a section is empty when a host's results were cut short", async () => {
+    mockCore({ repos: [watchedRepo], pulls: [], incomplete: ["github.com"] });
+
+    const wrapper = await mountList();
+
+    expect(wrapper.text()).not.toContain("No review requests");
+    expect(wrapper.find("[data-testid=inbox-incomplete]").exists()).toBe(true);
   });
 
   it("shows the core's message when the list can't be read at all", async () => {

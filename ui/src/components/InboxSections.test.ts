@@ -9,7 +9,7 @@ import { SECTIONS, type Section } from "@/lib/sections";
 import { useInboxStore, type HostFailure, type PullSummary } from "@/stores/inbox";
 
 type Failure = HostFailure["error"];
-type SectionState = { pulls?: PullSummary[]; failures?: HostFailure[]; fail?: Failure };
+type SectionState = { pulls?: PullSummary[]; failures?: HostFailure[]; incomplete?: string[]; fail?: Failure };
 
 const watchedRepo = {
   id: 1,
@@ -42,7 +42,7 @@ function mockCore(sections: Partial<Record<Section, SectionState>>, repos: unkno
       case "list_section": {
         const state = sections[(args as { section: Section }).section] ?? {};
         if (state.fail) throw state.fail;
-        return { pulls: state.pulls ?? [], failures: state.failures ?? [] };
+        return { pulls: state.pulls ?? [], failures: state.failures ?? [], incomplete: state.incomplete ?? [] };
       }
       default:
         throw new Error(`unexpected command: ${cmd}`);
@@ -166,6 +166,16 @@ describe("InboxSections", () => {
     expect(sections(drawer)).toEqual(["Review requested 0", "Assigned 0", "Authored by me 1+", "Mentioned 0"]);
     const authored = drawer.findAll("[data-testid=inbox-section]")[2];
     expect(authored.get("[title]").attributes("title")).toContain("Not every host answered");
+  });
+
+  it("marks a count as a lower bound when a host's results were cut short", async () => {
+    mockCore({ assigned: { pulls: [pull("a")], incomplete: ["github.com"] } });
+
+    const { drawer } = await mountInbox();
+
+    expect(sections(drawer)).toEqual(["Review requested 0", "Assigned 1+", "Authored by me 0", "Mentioned 0"]);
+    const assigned = drawer.findAll("[data-testid=inbox-section]")[1];
+    expect(assigned.get("[title]").attributes("title")).toContain("more results than Docent can fetch");
   });
 
   it("shows no count for a section that couldn't be read, and its message when selected", async () => {

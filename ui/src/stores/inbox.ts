@@ -24,20 +24,22 @@ export type PullSummary = {
 export type HostFailure = { host: string; error: { kind: string; message: string } };
 
 /**
- * One section's last answer. `loaded` is false until a load has answered for
- * it, and `error` is set when the whole section couldn't be read.
+ * One section's last answer. `incomplete` names the hosts that answered but
+ * had more results than Docent fetches. `loaded` is false until a load has
+ * answered for it, and `error` is set when the whole section couldn't be read.
  */
 export type SectionState = {
   pulls: PullSummary[];
   failures: HostFailure[];
+  incomplete: string[];
   error: string | null;
   loaded: boolean;
 };
 
-type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[] };
+type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[]; incomplete: string[] };
 
 function sectionState(answer: Partial<SectionState> = {}): SectionState {
-  return { pulls: [], failures: [], error: null, loaded: false, ...answer };
+  return { pulls: [], failures: [], incomplete: [], error: null, loaded: false, ...answer };
 }
 
 /** The inbox's sections, and which one the list shows. */
