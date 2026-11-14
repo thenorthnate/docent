@@ -5,7 +5,7 @@ import { createMemoryHistory } from "vue-router";
 import { createPinia } from "pinia";
 import InboxPage from "./InboxPage.vue";
 import { createAppRouter } from "@/router";
-import type { PullSummary } from "@/stores/inbox";
+import { useInboxStore, type PullSummary, type Section } from "@/stores/inbox";
 
 const watchedRepo = {
   id: 1,
@@ -36,13 +36,14 @@ const pulls = [
   pull(3, "Polish the spoon"),
 ];
 
-async function mountPage(listed: PullSummary[] = pulls) {
-  mockIPC((cmd) => {
+/** The inbox page over a fake core listing `listed` in every section unless `bySection` names that one. */
+async function mountPage(listed: PullSummary[] = pulls, bySection: Partial<Record<Section, PullSummary[]>> = {}) {
+  mockIPC((cmd, args) => {
     switch (cmd) {
       case "list_watched_repos":
         return [watchedRepo];
       case "list_section":
-        return { pulls: listed, failures: [] };
+        return { pulls: bySection[(args as { section: Section }).section] ?? listed, failures: [] };
       default:
         throw new Error(`unexpected command: ${cmd}`);
     }
@@ -50,9 +51,10 @@ async function mountPage(listed: PullSummary[] = pulls) {
   const router = createAppRouter(createMemoryHistory());
   await router.push("/inbox");
   await router.isReady();
-  const wrapper = mount(InboxPage, { global: { plugins: [router, createPinia()] }, attachTo: document.body });
+  const pinia = createPinia();
+  const wrapper = mount(InboxPage, { global: { plugins: [router, pinia] }, attachTo: document.body });
   await flushPromises();
-  return { wrapper, router };
+  return { wrapper, router, inbox: useInboxStore(pinia) };
 }
 
 type Page = Awaited<ReturnType<typeof mountPage>>["wrapper"];
@@ -216,5 +218,29 @@ describe("InboxPage", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.path).toBe(reviewPath);
+  });
+
+  it("keeps the preview across sections only for a PR the new section lists", async () => {
+    const [greeting, knife, spoon] = pulls;
+    const { wrapper, inbox } = await mountPage(pulls, { assigned: [spoon], authored: [knife, greeting] });
+    await row(wrapper, "Fix the greeting").trigger("click");
+
+    inbox.select("assigned");
+    await flushPromises();
+    expect(selectedTitle(wrapper)).toBeNull();
+    expect(preview(wrapper).text()).toBe("Select a pull request to preview it.");
+    await press("j");
+    expect(selectedTitle(wrapper)).toContain("Polish the spoon");
+
+    await row(wrapper, "Polish the spoon").trigger("click");
+    inbox.select("review_requested");
+    await flushPromises();
+    expect(selectedTitle(wrapper)).toContain("Polish the spoon");
+
+    await row(wrapper, "Fix the greeting").trigger("click");
+    inbox.select("authored");
+    await flushPromises();
+    expect(selectedTitle(wrapper)).toContain("Fix the greeting");
+    expect(preview(wrapper).get("h2").text()).toBe("Fix the greeting");
   });
 });
