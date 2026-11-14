@@ -5,7 +5,7 @@ import { formatAge } from "@/lib/age";
 import { useInboxStore } from "@/stores/inbox";
 
 const inbox = useInboxStore();
-const { pulls, hasWatchedRepos } = storeToRefs(inbox);
+const { pulls, failures, error, hasWatchedRepos } = storeToRefs(inbox);
 
 onMounted(inbox.load);
 </script>
@@ -49,12 +49,28 @@ onMounted(inbox.load);
           >{{ formatAge(pr.created_at) }}</time>
         </li>
       </ul>
+      <!-- Only claim there's nothing when every host answered. -->
       <p
-        v-else
+        v-else-if="!failures.length && !error"
         class="text-sm text-muted-foreground"
       >
         No review requests in your watched repos.
       </p>
     </template>
+    <div
+      v-if="error || failures.length"
+      role="alert"
+      class="space-y-1 text-sm text-destructive"
+    >
+      <p v-if="error">
+        {{ error }}
+      </p>
+      <p
+        v-for="failure in failures"
+        :key="failure.host"
+      >
+        {{ failure.error.message }}
+      </p>
+    </div>
   </section>
 </template>

@@ -107,4 +107,29 @@ describe("ReviewRequestedList", () => {
     expect(rows(wrapper)).toHaveLength(0);
     expect(wrapper.text()).toContain("No review requests");
   });
+
+  it("names each host that couldn't be asked and still shows the others' PRs", async () => {
+    mockCore({
+      repos: [watchedRepo],
+      pulls: [pull()],
+      failures: [
+        { host: "ghe.corp.test", error: { kind: "unreachable", message: "Could not reach ghe.corp.test: timed out" } },
+      ],
+    });
+
+    const wrapper = await mountList();
+
+    expect(rows(wrapper)).toHaveLength(1);
+    expect(wrapper.get("[role=alert]").text()).toContain("Could not reach ghe.corp.test: timed out");
+    expect(wrapper.text()).not.toContain("No review requests");
+  });
+
+  it("shows the core's message when the list can't be read at all", async () => {
+    mockCore({ repos: [watchedRepo], fail: { kind: "database", message: "Docent's database failed: locked" } });
+
+    const wrapper = await mountList();
+
+    expect(wrapper.get("[role=alert]").text()).toBe("Docent's database failed: locked");
+    expect(wrapper.text()).not.toContain("No review requests");
+  });
 });
