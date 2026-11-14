@@ -32,6 +32,12 @@ export function createAppRouter(history: RouterHistory) {
         meta: { area: "review" },
       },
       {
+        path: "/review/:host/:owner/:repo/:number(\\d+)",
+        name: "review-pr",
+        components: { default: ReviewPage, drawer: ReviewDrawer },
+        meta: { area: "review" },
+      },
+      {
         path: "/settings",
         name: "settings",
         components: { default: SettingsPage, drawer: SettingsDrawer },
