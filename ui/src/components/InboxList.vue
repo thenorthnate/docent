@@ -3,8 +3,13 @@ import { computed, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
+import { pullKey } from "@/lib/pull";
 import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
-import { useInboxStore } from "@/stores/inbox";
+import { useInboxStore, type PullSummary } from "@/stores/inbox";
+
+/** The selected PR's key, from `pullKey`; `null` when none is. */
+const selectedPull = defineModel<string | null>("selectedPull", { default: null });
+const emit = defineEmits<{ open: [pull: PullSummary] }>();
 
 const inbox = useInboxStore();
 const { selectedSection, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
@@ -50,13 +55,19 @@ onMounted(inbox.load);
       <!-- Every field below came from the forge: text interpolation only, never v-html. -->
       <ul
         v-if="pulls.length"
+        role="listbox"
+        aria-labelledby="inbox-list-heading"
         class="divide-y rounded-md border"
       >
         <li
           v-for="pr in pulls"
-          :key="`${pr.host}/${pr.owner}/${pr.repo}#${pr.number}`"
+          :key="pullKey(pr)"
+          role="option"
+          :aria-selected="pullKey(pr) === selectedPull"
           data-testid="inbox-row"
-          class="flex items-baseline gap-3 px-3 py-2 text-sm"
+          class="flex cursor-default items-baseline gap-3 px-3 py-2 text-sm select-none aria-selected:bg-accent"
+          @click="selectedPull = pullKey(pr)"
+          @dblclick="emit('open', pr)"
         >
           <span class="min-w-0 flex-1 truncate font-medium">{{ pr.title }}</span>
           <span class="shrink-0 text-muted-foreground">
