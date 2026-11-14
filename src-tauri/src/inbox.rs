@@ -69,6 +69,7 @@ mod tests {
             title: format!("PR {number}"),
             author: "mona".to_string(),
             created_at: created_at.to_string(),
+            body: None,
         }
     }
 
