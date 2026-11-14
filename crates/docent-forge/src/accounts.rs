@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use crate::github::{self, RepoName};
 use crate::{
-    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, RepoError, ReviewRequested, Token,
+    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, RepoError, Section, SectionPulls,
+    Token,
 };
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
@@ -230,8 +231,8 @@ impl Accounts {
 }
 
 impl Forge for Accounts {
-    async fn review_requested(&self) -> ReviewRequested {
-        let mut found = ReviewRequested::default();
+    async fn search(&self, section: Section) -> SectionPulls {
+        let mut found = SectionPulls::default();
         // Copy what each host needs, so no lock is held across an API call.
         let hosts: Vec<(Host, Result<Arc<Token>, ConnectError>)> = self
             .lock()
@@ -248,7 +249,7 @@ impl Forge for Accounts {
             let result = match token {
                 Ok(token) => {
                     let api_base = (self.api_base)(&host);
-                    let search = github::review_requested(&host, &api_base, &token);
+                    let search = github::search(&host, &api_base, &token, section);
                     tokio::time::timeout(self.request_timeout, search)
                         .await
                         .unwrap_or_else(|_| {

@@ -3,7 +3,7 @@ import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { messageOf } from "@/lib/ipc";
 
-/** An open PR requesting the user's review, as the Rust core reports it. */
+/** An open PR in an inbox section, as the Rust core reports it. */
 export type PullSummary = {
   host: string;
   owner: string;
@@ -18,7 +18,10 @@ export type PullSummary = {
 /** A host that couldn't be asked, with the core's `{ kind, message }`. */
 export type HostFailure = { host: string; error: { kind: string; message: string } };
 
-type ReviewRequested = { pulls: PullSummary[]; failures: HostFailure[] };
+/** An inbox section the Rust core can search, by its snake-case name. */
+export type Section = "review_requested" | "assigned" | "authored" | "mentioned";
+
+type SectionPulls = { pulls: PullSummary[]; failures: HostFailure[] };
 
 /** The inbox's Review requested section. */
 export const useInboxStore = defineStore("inbox", () => {
@@ -46,7 +49,7 @@ export const useInboxStore = defineStore("inbox", () => {
       if (!current()) return;
       hasWatchedRepos.value = watched.length > 0;
       const found = hasWatchedRepos.value
-        ? await invoke<ReviewRequested>("list_review_requested")
+        ? await invoke<SectionPulls>("list_section", { section: "review_requested" satisfies Section })
         : { pulls: [], failures: [] };
       if (!current()) return;
       pulls.value = found.pulls;

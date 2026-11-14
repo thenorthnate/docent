@@ -1,19 +1,19 @@
-//! The inbox's Review requested section: the forge's review requests, kept
-//! to watched repos.
+//! The inbox's sections: the forge's searches, kept to watched repos.
 
-use docent_forge::{Forge, ReviewRequested};
+use docent_forge::{Forge, Section, SectionPulls};
 use docent_store::Store;
 
 use crate::command_error::CommandError;
 
-/// Open PRs that request the user's review, in watched repos only.
-pub async fn review_requested(
+/// The open PRs in `section`, in watched repos only.
+pub async fn section_pulls(
     forge: &impl Forge,
     store: &Store,
-) -> Result<ReviewRequested, CommandError> {
+    section: Section,
+) -> Result<SectionPulls, CommandError> {
     let watched = store.watched_repos().await?;
     if watched.is_empty() {
-        return Ok(ReviewRequested::default());
+        return Ok(SectionPulls::default());
     }
     // Host names, and GitHub owner and repo names, all ignore case.
     let is_watched = |host: &str, owner: &str, repo: &str| {
@@ -23,7 +23,7 @@ pub async fn review_requested(
                 && w.name.eq_ignore_ascii_case(repo)
         })
     };
-    let mut found = forge.review_requested().await;
+    let mut found = forge.search(section).await;
     found
         .pulls
         .retain(|pull| is_watched(&pull.host, &pull.owner, &pull.repo));
@@ -41,7 +41,7 @@ pub async fn review_requested(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use docent_forge::{ConnectError, FakeForge, HostFailure, PullSummary};
+    use docent_forge::{ConnectError, FakeForge, HostFailure, PullSummary, Section};
     use docent_store::NewRepo;
 
     async fn watching(repos: &[(&str, &str)]) -> Store {
@@ -83,7 +83,7 @@ mod tests {
     }
 
     fn forge(pulls: Vec<PullSummary>, failures: Vec<HostFailure>) -> FakeForge {
-        FakeForge::with_review_requested(ReviewRequested { pulls, failures })
+        FakeForge::with_pulls(SectionPulls { pulls, failures })
     }
 
     #[tokio::test]
@@ -113,7 +113,9 @@ mod tests {
             vec![],
         );
 
-        let found = review_requested(&forge, &store).await.unwrap();
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
         assert_eq!(numbers, vec![3, 1]);
@@ -139,7 +141,9 @@ mod tests {
             vec![],
         );
 
-        let found = review_requested(&forge, &store).await.unwrap();
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
         assert_eq!(numbers, vec![2, 1]);
@@ -158,7 +162,9 @@ mod tests {
             vec![],
         );
 
-        let found = review_requested(&forge, &store).await.unwrap();
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found.pulls.len(), 1);
     }
@@ -176,7 +182,9 @@ mod tests {
             vec![],
         );
 
-        let found = review_requested(&forge, &store).await.unwrap();
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found.pulls, vec![]);
     }
@@ -194,10 +202,12 @@ mod tests {
             vec![failure("github.com")],
         );
 
-        let found = review_requested(&forge, &store).await.unwrap();
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
-        assert_eq!(found, ReviewRequested::default());
-        assert_eq!(forge.calls(), 0);
+        assert_eq!(found, SectionPulls::default());
+        assert_eq!(forge.asked(), vec![]);
     }
 
     #[tokio::test]
@@ -208,8 +218,45 @@ mod tests {
             vec![failure("github.com"), failure("ghe.corp.test")],
         );
 
-        let found = review_requested(&forge, &store).await.unwrap();
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
 
         assert_eq!(found.failures, vec![failure("github.com")]);
+    }
+
+    #[tokio::test]
+    async fn every_section_asks_for_itself_and_keeps_to_watched_repos() {
+        let store = watching(&[("github.com", "octocat/Hello-World")]).await;
+        for asked in [
+            Section::ReviewRequested,
+            Section::Assigned,
+            Section::Authored,
+            Section::Mentioned,
+        ] {
+            let forge = forge(
+                vec![
+                    pull(
+                        "github.com",
+                        "octocat/Hello-World",
+                        1,
+                        "2026-11-01T00:00:00Z",
+                    ),
+                    pull(
+                        "github.com",
+                        "octocat/Spoon-Knife",
+                        2,
+                        "2026-11-12T00:00:00Z",
+                    ),
+                ],
+                vec![],
+            );
+
+            let found = section_pulls(&forge, &store, asked).await.unwrap();
+
+            assert_eq!(forge.asked(), vec![asked]);
+            let numbers: Vec<u64> = found.pulls.iter().map(|p| p.number).collect();
+            assert_eq!(numbers, vec![1], "{asked:?}");
+        }
     }
 }

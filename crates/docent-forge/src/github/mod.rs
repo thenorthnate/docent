@@ -6,7 +6,7 @@ pub use repo_name::RepoName;
 
 use octocrab::Octocrab;
 
-use crate::{ConnectError, Host, PullSummary, Token};
+use crate::{ConnectError, Host, PullSummary, Section, Token};
 
 #[derive(serde::Deserialize)]
 struct User {
@@ -105,12 +105,27 @@ pub(crate) async fn current_login(
         .map_err(|err| err.into_connect(host))
 }
 
-/// The search for open PRs that request the user's review, directly or
-/// through a team, newest update first. URL-encoded by hand because it never
-/// changes: `is:pr is:open archived:false review-requested:@me`.
-const REVIEW_REQUESTED_SEARCH: &str = "/search/issues\
-    ?q=is%3Apr+is%3Aopen+archived%3Afalse+review-requested%3A%40me\
-    &sort=updated&order=desc&per_page=100";
+/// The search for a section's open PRs, newest update first. URL-encoded by
+/// hand because each is fixed: `is:pr is:open archived:false` and the
+/// section's qualifier, like `review-requested:@me` (directly or through a
+/// team).
+fn search_path(section: Section) -> &'static str {
+    macro_rules! search {
+        ($qualifier:literal) => {
+            concat!(
+                "/search/issues?q=is%3Apr+is%3Aopen+archived%3Afalse+",
+                $qualifier,
+                "&sort=updated&order=desc&per_page=100"
+            )
+        };
+    }
+    match section {
+        Section::ReviewRequested => search!("review-requested%3A%40me"),
+        Section::Assigned => search!("assignee%3A%40me"),
+        Section::Authored => search!("author%3A%40me"),
+        Section::Mentioned => search!("mentions%3A%40me"),
+    }
+}
 
 #[derive(serde::Deserialize)]
 struct SearchResults {
@@ -147,14 +162,14 @@ impl SearchItem {
     }
 }
 
-/// Open PRs on `host` that request the user's review. Only the first 100
-/// are fetched.
-pub(crate) async fn review_requested(
+/// The open PRs in `section` on `host`. Only the first 100 are fetched.
+pub(crate) async fn search(
     host: &Host,
     api_base: &str,
     token: &Token,
+    section: Section,
 ) -> Result<Vec<PullSummary>, ConnectError> {
-    let results: SearchResults = get(host, api_base, token, REVIEW_REQUESTED_SEARCH)
+    let results: SearchResults = get(host, api_base, token, search_path(section))
         .await
         .map_err(|err| err.into_connect(host))?;
     Ok(results
