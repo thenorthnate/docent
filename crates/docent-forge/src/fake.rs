@@ -1,34 +1,41 @@
 //! A fake [`Forge`] with canned answers, for tests in other crates. Built only
 //! with the `fake` feature, which nothing turns on outside dev-dependencies.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
-use crate::{Forge, ReviewRequested};
+use crate::{Forge, Section, SectionPulls};
 
-/// Answers [`Forge::review_requested`] with a fixed value and counts the calls.
+/// Answers [`Forge::search`] with the same fixed value for every section, and
+/// records which sections were asked for.
 #[derive(Debug, Default)]
 pub struct FakeForge {
-    review_requested: ReviewRequested,
-    calls: AtomicUsize,
+    pulls: SectionPulls,
+    asked: Mutex<Vec<Section>>,
 }
 
 impl FakeForge {
-    pub fn with_review_requested(review_requested: ReviewRequested) -> Self {
+    pub fn with_pulls(pulls: SectionPulls) -> Self {
         Self {
-            review_requested,
-            calls: AtomicUsize::new(0),
+            pulls,
+            asked: Mutex::default(),
         }
     }
 
-    /// How many times the forge has been asked anything.
-    pub fn calls(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
+    /// The sections searched so far, in order.
+    pub fn asked(&self) -> Vec<Section> {
+        self.asked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
 impl Forge for FakeForge {
-    async fn review_requested(&self) -> ReviewRequested {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        self.review_requested.clone()
+    async fn search(&self, section: Section) -> SectionPulls {
+        self.asked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(section);
+        self.pulls.clone()
     }
 }

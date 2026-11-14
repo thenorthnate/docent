@@ -4,7 +4,7 @@
 mod common;
 
 use common::{FakeGh, accounts_against, github_for};
-use docent_forge::{Accounts, ConnectError, Forge, HostFailure, PullSummary};
+use docent_forge::{Accounts, ConnectError, Forge, HostFailure, PullSummary, Section};
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -53,7 +53,7 @@ async fn review_requested_prs_come_back_with_title_repo_author_and_age() {
     let accounts = accounts_against(vec![("github.com", &api)]);
     accounts.connect("github.com", &gh.cli()).await.unwrap();
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.failures, vec![]);
     assert_eq!(
@@ -98,7 +98,7 @@ async fn each_host_is_searched_with_its_own_token() {
     accounts.connect("github.com", &gh.cli()).await.unwrap();
     accounts.connect("ghe.corp.test", &gh.cli()).await.unwrap();
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.failures, vec![]);
     assert_eq!(found.pulls.len(), 2);
@@ -126,7 +126,7 @@ async fn a_failing_host_is_reported_and_the_others_still_show() {
     accounts.connect("github.com", &gh.cli()).await.unwrap();
     accounts.connect("ghe.corp.test", &gh.cli()).await.unwrap();
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.pulls.len(), 2);
     assert_eq!(
@@ -147,7 +147,7 @@ async fn a_host_that_failed_to_reconnect_is_reported_without_an_api_call() {
     let accounts = Accounts::with_api_base(|_| unreachable!("no API call without a token"));
     let _ = accounts.restore("github.com", "octocat", &gh.cli()).await;
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.pulls, vec![]);
     assert_eq!(
@@ -163,7 +163,7 @@ async fn a_host_that_failed_to_reconnect_is_reported_without_an_api_call() {
 async fn no_connected_hosts_means_nothing_to_show() {
     let accounts = Accounts::with_api_base(|_| unreachable!("no hosts, no API call"));
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.pulls, vec![]);
     assert_eq!(found.failures, vec![]);
@@ -183,7 +183,7 @@ async fn search_errors_never_carry_the_token() {
     let accounts = accounts_against(vec![("github.com", &api)]);
     accounts.connect("github.com", &gh.cli()).await.unwrap();
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.failures.len(), 1);
     let shown = format!("{:?} {}", found.failures, found.failures[0].error);
@@ -199,7 +199,7 @@ async fn a_repo_owned_by_a_user_named_repos_is_kept() {
     let accounts = accounts_against(vec![("github.com", &api)]);
     accounts.connect("github.com", &gh.cli()).await.unwrap();
 
-    let found = accounts.review_requested().await;
+    let found = accounts.search(Section::ReviewRequested).await;
 
     assert_eq!(found.pulls[0].owner, "repos");
     assert_eq!(found.pulls[0].repo, "Hello-World");
@@ -231,7 +231,7 @@ async fn a_host_that_does_not_answer_times_out_and_the_others_still_show() {
 
     let found = tokio::time::timeout(
         std::time::Duration::from_secs(20),
-        accounts.review_requested(),
+        accounts.search(Section::ReviewRequested),
     )
     .await
     .expect("the slow host was given up on");

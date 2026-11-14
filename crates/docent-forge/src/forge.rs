@@ -28,19 +28,33 @@ pub struct HostFailure {
     pub error: ConnectError,
 }
 
+/// An inbox section the forge searches for. The UI names one in snake case,
+/// like `review_requested`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Section {
+    /// Open PRs that request the user's review, directly or through a team.
+    ReviewRequested,
+    /// Open PRs assigned to the user.
+    Assigned,
+    /// Open PRs the user opened.
+    Authored,
+    /// Open PRs that mention the user.
+    Mentioned,
+}
+
 /// The PRs found on the hosts that answered, and the hosts that didn't.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
-pub struct ReviewRequested {
+pub struct SectionPulls {
     pub pulls: Vec<PullSummary>,
     pub failures: Vec<HostFailure>,
 }
 
 /// A forge, across every connected host.
 pub trait Forge: Sync {
-    /// Open PRs that request the user's review, from every connected host.
-    /// Each host is asked on its own, so one failing host doesn't hide the
-    /// others.
-    fn review_requested(&self) -> impl Future<Output = ReviewRequested> + Send;
+    /// The open PRs in `section`, from every connected host. Each host is
+    /// asked on its own, so one failing host doesn't hide the others.
+    fn search(&self, section: Section) -> impl Future<Output = SectionPulls> + Send;
 }
 
 #[cfg(test)]
@@ -49,7 +63,7 @@ mod tests {
 
     #[test]
     fn the_ui_receives_pulls_and_failures_with_kind_and_message() {
-        let found = ReviewRequested {
+        let found = SectionPulls {
             pulls: vec![PullSummary {
                 host: "github.com".to_string(),
                 owner: "octocat".to_string(),
