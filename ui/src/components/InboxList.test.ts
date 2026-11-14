@@ -143,7 +143,7 @@ describe("InboxList", () => {
     const wrapper = await mountList();
 
     state.pulls = [pull(), pull({ number: 7, title: "Another one" })];
-    await wrapper.get("button[aria-label='Refresh review requests']").trigger("click");
+    await wrapper.get("button[aria-label='Refresh inbox']").trigger("click");
     await flushPromises();
 
     expect(rows(wrapper).map((r) => r.text())).toEqual([
@@ -223,7 +223,7 @@ describe("InboxList", () => {
     const wrapper = await mountList();
 
     state.fail = { kind: "database", message: "locked" };
-    await wrapper.get("button[aria-label='Refresh review requests']").trigger("click");
+    await wrapper.get("button[aria-label='Refresh inbox']").trigger("click");
     await flushPromises();
 
     expect(rows(wrapper)).toHaveLength(0);

@@ -4,7 +4,8 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createPinia } from "pinia";
 import InboxList from "./InboxList.vue";
 import InboxSections from "./InboxSections.vue";
-import type { HostFailure, PullSummary, Section } from "@/stores/inbox";
+import WatchedRepos from "./WatchedRepos.vue";
+import { SECTIONS, useInboxStore, type HostFailure, type PullSummary, type Section } from "@/stores/inbox";
 
 type Failure = HostFailure["error"];
 type SectionState = { pulls?: PullSummary[]; failures?: HostFailure[]; fail?: Failure };
@@ -161,5 +162,52 @@ describe("InboxSections", () => {
     await select(drawer, "Assigned");
     expect(list.get("[role=alert]").text()).toBe("locked");
     expect(list.text()).not.toContain("No PRs assigned to you");
+  });
+
+  it.each([
+    ["watching", "watch"],
+    ["unwatching", "unwatch"],
+  ])("updates every count after %s a repo", async (_case, action) => {
+    const repos: unknown[] = action === "watch" ? [] : [watchedRepo];
+    mockIPC((cmd, args) => {
+      switch (cmd) {
+        case "list_accounts":
+          return [{ host: "github.com", login: "octocat", error: null }];
+        case "list_watched_repos":
+          return [...repos];
+        case "watch_repo":
+          repos.push(watchedRepo);
+          return watchedRepo;
+        case "unwatch_repo":
+          repos.pop();
+          return null;
+        case "list_section": {
+          // The real core answers nothing while no repo is watched.
+          if (!repos.length) return { pulls: [], failures: [] };
+          const n = SECTIONS.indexOf((args as { section: Section }).section) + 1;
+          return { pulls: Array.from({ length: n }, (_, i) => pull(`PR ${i}`, i)), failures: [] };
+        }
+        default:
+          throw new Error(`unexpected command: ${cmd}`);
+      }
+    });
+    const pinia = createPinia();
+    const drawer = mount(InboxSections, { global: { plugins: [pinia] } });
+    const watched = mount(WatchedRepos, { global: { plugins: [pinia] } });
+    await useInboxStore(pinia).load();
+    await flushPromises();
+    const watchingCounts = ["Review requested 1", "Assigned 2", "Authored by me 3", "Mentioned 4"];
+    const emptyCounts = ["Review requested 0", "Assigned 0", "Authored by me 0", "Mentioned 0"];
+    expect(sections(drawer)).toEqual(action === "watch" ? emptyCounts : watchingCounts);
+
+    if (action === "watch") {
+      await watched.get("input[name=repo]").setValue("octocat/Hello-World");
+      await watched.get("form").trigger("submit");
+    } else {
+      await watched.get("button[aria-label='Unwatch octocat/Hello-World']").trigger("click");
+    }
+    await flushPromises();
+
+    expect(sections(drawer)).toEqual(action === "watch" ? watchingCounts : emptyCounts);
   });
 });

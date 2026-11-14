@@ -33,7 +33,7 @@ onMounted(inbox.load);
       <Button
         variant="ghost"
         size="xs"
-        aria-label="Refresh review requests"
+        aria-label="Refresh inbox"
         :disabled="loading"
         @click="inbox.load"
       >
