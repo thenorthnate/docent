@@ -48,7 +48,7 @@ function mockCore(accounts: Account[], options: { failWatch?: Failure; failAccou
         );
         return null;
       }
-      case "list_review_requested":
+      case "list_section":
         return { pulls: [], failures: [] };
       default:
         throw new Error(`unexpected command: ${cmd}`);

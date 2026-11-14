@@ -43,10 +43,11 @@ function pull(overrides: Partial<Pull> = {}): Pull {
 /** A fake Rust core whose answers the test can change between calls. */
 function mockCore(state: { pulls?: Pull[]; failures?: Failure[]; repos?: Repo[]; fail?: Failure["error"] }) {
   const calls: string[] = [];
-  mockIPC((cmd) => {
+  mockIPC((cmd, args) => {
     calls.push(cmd);
     switch (cmd) {
-      case "list_review_requested":
+      case "list_section":
+        expect(args).toEqual({ section: "review_requested" });
         if (state.fail) throw state.fail;
         return { pulls: state.pulls ?? [], failures: state.failures ?? [] };
       case "list_watched_repos":
@@ -98,7 +99,7 @@ describe("ReviewRequestedList", () => {
     const wrapper = await mountList();
 
     expect(wrapper.text()).toContain("Watch a repo in the drawer");
-    expect(calls).not.toContain("list_review_requested");
+    expect(calls).not.toContain("list_section");
   });
 
   it("says nothing is waiting when watched repos have no review requests", async () => {
@@ -167,7 +168,7 @@ describe("ReviewRequestedList", () => {
         case "unwatch_repo":
           repos.pop();
           return null;
-        case "list_review_requested":
+        case "list_section":
           return { pulls: [pull()], failures: [] };
         default:
           throw new Error(`unexpected command: ${cmd}`);
