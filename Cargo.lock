@@ -876,6 +876,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "docent-git"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "docent-store"
 version = "0.1.0"
 dependencies = [
