@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, nextTick, onMounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
+import { pullKey } from "@/lib/pull";
 import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
-import { useInboxStore } from "@/stores/inbox";
+import { useInboxStore, type PullSummary } from "@/stores/inbox";
+
+/** The selected PR's key, from `pullKey`; `null` when none is. */
+const selectedPull = defineModel<string | null>("selectedPull", { default: null });
+const emit = defineEmits<{ open: [pull: PullSummary] }>();
 
 const inbox = useInboxStore();
 const { selectedSection, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
@@ -14,6 +19,17 @@ const error = computed(() => selectedSection.value.error);
 
 /** Rows name their host only when the PRs span more than one. */
 const showHost = computed(() => new Set(pulls.value.map((pr) => pr.host)).size > 1);
+
+/** Each row's element id, so the listbox can point at the selected one. */
+const rowId = (index: number) => `inbox-row-${index}`;
+const selectedIndex = computed(() => pulls.value.findIndex((pr) => pullKey(pr) === selectedPull.value));
+
+// Keep the selected row on screen as j/k move it.
+watch(selectedIndex, async (index) => {
+  if (index === -1) return;
+  await nextTick();
+  document.getElementById(rowId(index))?.scrollIntoView({ block: "nearest" });
+});
 
 onMounted(inbox.load);
 </script>
@@ -50,13 +66,22 @@ onMounted(inbox.load);
       <!-- Every field below came from the forge: text interpolation only, never v-html. -->
       <ul
         v-if="pulls.length"
+        role="listbox"
+        tabindex="0"
+        aria-labelledby="inbox-list-heading"
+        :aria-activedescendant="selectedIndex === -1 ? undefined : rowId(selectedIndex)"
         class="divide-y rounded-md border"
       >
         <li
-          v-for="pr in pulls"
-          :key="`${pr.host}/${pr.owner}/${pr.repo}#${pr.number}`"
+          v-for="(pr, index) in pulls"
+          :id="rowId(index)"
+          :key="pullKey(pr)"
+          role="option"
+          :aria-selected="index === selectedIndex"
           data-testid="inbox-row"
-          class="flex items-baseline gap-3 px-3 py-2 text-sm"
+          class="flex cursor-default items-baseline gap-3 px-3 py-2 text-sm select-none aria-selected:bg-accent"
+          @click="selectedPull = pullKey(pr)"
+          @dblclick="emit('open', pr)"
         >
           <span class="min-w-0 flex-1 truncate font-medium">{{ pr.title }}</span>
           <span class="shrink-0 text-muted-foreground">

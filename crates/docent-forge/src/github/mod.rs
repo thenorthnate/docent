@@ -140,6 +140,7 @@ struct SearchItem {
     title: String,
     user: User,
     created_at: String,
+    body: Option<String>,
 }
 
 impl SearchItem {
@@ -158,6 +159,7 @@ impl SearchItem {
             title: self.title,
             author: self.user.login,
             created_at: self.created_at,
+            body: self.body,
         })
     }
 }
