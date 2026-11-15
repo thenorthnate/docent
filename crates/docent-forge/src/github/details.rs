@@ -10,10 +10,10 @@ use super::client;
 use crate::{CiStatus, Host, PullDetails, ReviewState, Token};
 
 /// GraphQL's `nodes` takes at most 100 IDs.
-const BATCH: usize = 100;
+const MAX_NODE_IDS: usize = 100;
 
 const QUERY: &str = "query($ids: [ID!]!) { nodes(ids: $ids) { ... on PullRequest { \
-    id additions deletions changedFiles reviewDecision reviews(first: 0) { totalCount } \
+    id additions deletions changedFiles reviewDecision reviews(first: 0, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) { totalCount } \
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } }";
 
 #[derive(serde::Serialize)]
@@ -55,6 +55,7 @@ struct PullNode {
     deletions: u64,
     changed_files: u64,
     review_decision: Option<String>,
+    /// Submitted reviews only: the viewer's pending draft doesn't count.
     reviews: Count,
     commits: Nodes<CommitNode>,
 }
@@ -127,8 +128,9 @@ fn graphql_base(api_base: &str) -> &str {
 }
 
 /// The details of the PRs with node IDs `ids`, keyed by ID, until
-/// `deadline`. They're extras, so a batch that fails is left out, not
-/// reported: its rows show without details.
+/// `deadline`. They're extras, so failures aren't reported: the first batch
+/// that fails ends the fetch, since later ones would most likely fail the
+/// same way, and the rows left show without details.
 pub(crate) async fn fetch(
     host: &Host,
     api_base: &str,
@@ -140,7 +142,7 @@ pub(crate) async fn fetch(
     let Ok(client) = client(host, graphql_base(api_base), token) else {
         return found;
     };
-    for batch in ids.chunks(BATCH) {
+    for batch in ids.chunks(MAX_NODE_IDS) {
         let request = Request {
             query: QUERY,
             variables: Variables { ids: batch },
