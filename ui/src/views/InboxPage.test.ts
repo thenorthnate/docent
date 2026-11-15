@@ -26,6 +26,7 @@ function pull(number: number, title: string, overrides: Partial<PullSummary> = {
     author: "mona",
     created_at: "2026-11-10T12:00:00Z",
     body: null,
+    details: null,
     ...overrides,
   };
 }

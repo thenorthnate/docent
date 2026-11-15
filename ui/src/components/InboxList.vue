@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
-import { pullKey } from "@/lib/pull";
+import { CI_LABELS, REVIEW_LABELS, formatSize, pullKey } from "@/lib/pull";
 import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
 import { useInboxStore, type PullSummary } from "@/stores/inbox";
 
@@ -89,6 +89,22 @@ onMounted(inbox.load);
             <template v-if="showHost">{{ pr.host }}:</template>{{ pr.owner }}/{{ pr.repo }}
           </span>
           <span class="shrink-0 text-muted-foreground">{{ pr.author }}</span>
+          <template v-if="pr.details">
+            <span
+              data-testid="row-ci"
+              class="shrink-0"
+              :class="pr.details.ci === 'failing' ? 'text-destructive' : 'text-muted-foreground'"
+            >{{ CI_LABELS[pr.details.ci] }}</span>
+            <span
+              data-testid="row-review"
+              class="shrink-0"
+              :class="pr.details.review === 'changes_requested' ? 'text-destructive' : 'text-muted-foreground'"
+            >{{ REVIEW_LABELS[pr.details.review] }}</span>
+            <span
+              data-testid="row-size"
+              class="shrink-0 text-muted-foreground tabular-nums"
+            >{{ formatSize(pr.details) }}</span>
+          </template>
           <time
             class="w-16 shrink-0 text-right text-muted-foreground tabular-nums"
             :datetime="pr.created_at"

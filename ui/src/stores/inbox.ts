@@ -18,6 +18,26 @@ export type PullSummary = {
   created_at: string;
   /** The description as the author wrote it, or `null` when there is none. */
   body: string | null;
+  /** CI status, review state and size, or `null` when the forge couldn't say. */
+  details: PullDetails | null;
+};
+
+/** The combined state of the checks on a PR's head commit. */
+export type CiStatus = "passing" | "failing" | "pending" | "no_checks";
+
+/**
+ * Where a PR stands with its reviewers. `reviewed` and `no_reviews` are for
+ * repos that don't require reviews, so GitHub gives no decision.
+ */
+export type ReviewState = "approved" | "changes_requested" | "review_required" | "reviewed" | "no_reviews";
+
+/** What an inbox row shows beyond the search result. */
+export type PullDetails = {
+  ci: CiStatus;
+  review: ReviewState;
+  additions: number;
+  deletions: number;
+  changed_files: number;
 };
 
 /** A host that couldn't be asked, with the core's `{ kind, message }`. */
