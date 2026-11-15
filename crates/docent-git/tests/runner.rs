@@ -46,7 +46,9 @@ async fn env_seen_by_git(parent: Vec<(OsString, OsString)>) -> String {
 }
 
 fn names(env: &str) -> Vec<&str> {
-    env.lines().filter_map(|line| line.split_once('=').map(|(name, _)| name)).collect()
+    env.lines()
+        .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+        .collect()
 }
 
 #[tokio::test]
@@ -66,7 +68,10 @@ async fn forge_tokens_and_credential_helpers_never_reach_git() {
     .await;
 
     assert!(!env.contains("gho_secret"), "a token reached git:\n{env}");
-    assert!(!env.contains("s3cret"), "a non-allowlisted variable reached git:\n{env}");
+    assert!(
+        !env.contains("s3cret"),
+        "a non-allowlisted variable reached git:\n{env}"
+    );
     for name in names(&env) {
         assert!(
             !name.contains("TOKEN") && !name.contains("ASKPASS") && !name.starts_with("GIT_CONFIG"),
@@ -93,7 +98,10 @@ async fn new_starts_git_from_a_cleared_environment() {
 
     let env = std::fs::read_to_string(&dump).expect("fake git ran");
     // Cargo sets these for every test process.
-    assert!(!env.contains("CARGO_"), "the test process's environment leaked:\n{env}");
+    assert!(
+        !env.contains("CARGO_"),
+        "the test process's environment leaked:\n{env}"
+    );
 }
 
 #[tokio::test]

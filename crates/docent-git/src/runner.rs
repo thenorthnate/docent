@@ -21,7 +21,15 @@ pub struct Git {
 
 /// Parent variables passed on to git, so it finds the user's config and
 /// speaks their locale. Anything else, tokens included, is dropped.
-const ALLOWED: [&str; 7] = ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "TZ", "XDG_CONFIG_HOME"];
+const ALLOWED: [&str; 7] = [
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "TMPDIR",
+    "LANG",
+    "TZ",
+    "XDG_CONFIG_HOME",
+];
 
 /// Long enough for any local query; a hung git is killed.
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -34,13 +42,15 @@ impl Git {
 
     /// Like [`Git::new`], but filters `parent` instead of this process's
     /// environment. For tests.
-    pub fn with_env(path: OsString, parent: impl IntoIterator<Item = (OsString, OsString)>) -> Self {
+    pub fn with_env(
+        path: OsString,
+        parent: impl IntoIterator<Item = (OsString, OsString)>,
+    ) -> Self {
         let mut env: Vec<_> = parent
             .into_iter()
             .filter(|(name, _)| {
-                name.to_str().is_some_and(|name| {
-                    ALLOWED.contains(&name) || name.starts_with("LC_")
-                })
+                name.to_str()
+                    .is_some_and(|name| ALLOWED.contains(&name) || name.starts_with("LC_"))
             })
             .collect();
         env.push(("PATH".into(), path));
@@ -70,13 +80,16 @@ impl Git {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(self.failed(cwd, args, stderr.trim()));
         }
-        String::from_utf8(output.stdout)
-            .map_err(|_| self.failed(cwd, args, "output was not UTF-8"))
+        String::from_utf8(output.stdout).map_err(|_| self.failed(cwd, args, "output was not UTF-8"))
     }
 
     /// Logs a failed invocation (never its environment) and builds the error.
     fn failed(&self, cwd: &Path, args: &[&str], why: &str) -> GitError {
-        eprintln!("git {} (in {}) failed: {why}", args.join(" "), cwd.display());
+        eprintln!(
+            "git {} (in {}) failed: {why}",
+            args.join(" "),
+            cwd.display()
+        );
         GitError::Failed(why.to_string())
     }
 }

@@ -89,7 +89,10 @@ mod tests {
     #[test]
     fn reads_ssh_scp_style_and_git_protocol_urls() {
         let hello = repo("github.com", "octocat", "Hello-World");
-        assert_eq!(parsed("ssh://git@github.com/octocat/Hello-World.git"), hello);
+        assert_eq!(
+            parsed("ssh://git@github.com/octocat/Hello-World.git"),
+            hello
+        );
         assert_eq!(parsed("git@github.com:octocat/Hello-World.git"), hello);
         assert_eq!(parsed("github.com:octocat/Hello-World"), hello);
         assert_eq!(parsed("git://github.com/octocat/Hello-World.git"), hello);
