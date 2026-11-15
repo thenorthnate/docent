@@ -16,7 +16,9 @@ pub use accounts::{AccountSummary, Accounts};
 pub use error::ConnectError;
 #[cfg(feature = "fake")]
 pub use fake::FakeForge;
-pub use forge::{Forge, HostFailure, PullSummary, Section, SectionPulls};
+pub use forge::{
+    CiStatus, Forge, HostFailure, PullDetails, PullSummary, ReviewState, Section, SectionPulls,
+};
 pub use gh::GhCli;
 pub use host::Host;
 pub use repo::{ForgeRepo, RepoError};

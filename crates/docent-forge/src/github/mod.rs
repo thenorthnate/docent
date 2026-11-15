@@ -1,5 +1,6 @@
 //! GitHub: its naming rules and the REST calls Docent makes.
 
+mod details;
 mod repo_name;
 
 pub use repo_name::RepoName;
@@ -137,6 +138,8 @@ struct SearchItem {
     user: User,
     created_at: String,
     body: Option<String>,
+    /// The PR's GraphQL ID, for fetching its details.
+    node_id: Option<String>,
 }
 
 impl SearchItem {
@@ -156,6 +159,7 @@ impl SearchItem {
             author: self.user.login,
             created_at: self.created_at,
             body: self.body,
+            details: None,
         })
     }
 }
@@ -181,7 +185,8 @@ fn next_search_path(api_base: &str, next: &str) -> Option<String> {
 }
 
 /// The open PRs in `section` on `host`, following `next` links up to
-/// GitHub's 1,000-result limit, until `deadline`. If the first page fails the
+/// GitHub's 1,000-result limit, then fetching their details, until
+/// `deadline`. If the first page fails the
 /// host fails; if a later one does, the pages so far come back as incomplete.
 pub(crate) async fn search(
     host: &Host,
@@ -190,7 +195,8 @@ pub(crate) async fn search(
     section: Section,
     deadline: Instant,
 ) -> Result<HostPulls, ConnectError> {
-    let mut pulls = Vec::new();
+    // Each row with its node ID, for the details fetched after the search.
+    let mut found: Vec<(Option<String>, PullSummary)> = Vec::new();
     let mut fetched: u64 = 0;
     let mut incomplete = false;
     let mut next = Some(search_path(section).to_string());
@@ -221,14 +227,22 @@ pub(crate) async fn search(
             // A next page Docent won't ask for is a page missing.
             incomplete |= next.is_none();
         }
-        pulls.extend(
-            page.items
-                .into_iter()
-                .filter_map(|item| item.into_pull(host)),
-        );
+        found.extend(page.items.into_iter().filter_map(|item| {
+            let node_id = item.node_id.clone();
+            item.into_pull(host).map(|pull| (node_id, pull))
+        }));
     }
     // Still a page to go after the last one Docent fetches.
     incomplete |= next.is_some();
+    let ids: Vec<&str> = found.iter().filter_map(|(id, _)| id.as_deref()).collect();
+    let mut details = details::fetch(host, api_base, token, &ids, deadline).await;
+    let pulls = found
+        .into_iter()
+        .map(|(id, mut pull)| {
+            pull.details = id.and_then(|id| details.remove(&id));
+            pull
+        })
+        .collect();
     Ok(HostPulls { pulls, incomplete })
 }
 
