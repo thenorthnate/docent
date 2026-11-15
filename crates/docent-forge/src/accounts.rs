@@ -14,8 +14,8 @@ type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 /// up on a host, so one unreachable host can't stall the app.
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// How long an inbox search waits for one host before reporting it
-/// unreachable, so one host that stops answering can't hide the others.
+/// How long an inbox search waits for one host, across all its pages, so one
+/// host that stops answering can't hide the others.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A connected host as the UI sees it. It never holds the token.
@@ -249,23 +249,18 @@ impl Forge for Accounts {
             let result = match token {
                 Ok(token) => {
                     let api_base = (self.api_base)(&host);
-                    let search = github::search(&host, &api_base, &token, section);
-                    tokio::time::timeout(self.request_timeout, search)
-                        .await
-                        .unwrap_or_else(|_| {
-                            Err(ConnectError::Unreachable {
-                                host: host.as_str().to_string(),
-                                reason: format!(
-                                    "no answer within {} seconds",
-                                    self.request_timeout.as_secs()
-                                ),
-                            })
-                        })
+                    let deadline = tokio::time::Instant::now() + self.request_timeout;
+                    github::search(&host, &api_base, &token, section, deadline).await
                 }
                 Err(error) => Err(error),
             };
             match result {
-                Ok(pulls) => found.pulls.extend(pulls),
+                Ok(host_pulls) => {
+                    if host_pulls.incomplete {
+                        found.incomplete.push(host.as_str().to_string());
+                    }
+                    found.pulls.extend(host_pulls.pulls);
+                }
                 Err(error) => found.failures.push(HostFailure {
                     host: host.as_str().to_string(),
                     error,

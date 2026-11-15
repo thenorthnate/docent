@@ -30,11 +30,9 @@ pub async fn section_pulls(
     // RFC 3339 timestamps in UTC sort as text.
     found.pulls.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     // A host with nothing watched on it has nothing to miss.
-    found.failures.retain(|failure| {
-        watched
-            .iter()
-            .any(|w| w.host.eq_ignore_ascii_case(&failure.host))
-    });
+    let has_watched = |host: &str| watched.iter().any(|w| w.host.eq_ignore_ascii_case(host));
+    found.failures.retain(|failure| has_watched(&failure.host));
+    found.incomplete.retain(|host| has_watched(host));
     Ok(found)
 }
 
@@ -84,7 +82,11 @@ mod tests {
     }
 
     fn forge(pulls: Vec<PullSummary>, failures: Vec<HostFailure>) -> FakeForge {
-        FakeForge::with_pulls(SectionPulls { pulls, failures })
+        FakeForge::with_pulls(SectionPulls {
+            pulls,
+            failures,
+            incomplete: vec![],
+        })
     }
 
     #[tokio::test]
@@ -224,6 +226,21 @@ mod tests {
             .unwrap();
 
         assert_eq!(found.failures, vec![failure("github.com")]);
+    }
+
+    #[tokio::test]
+    async fn only_incomplete_hosts_with_watched_repos_are_shown() {
+        let store = watching(&[("github.com", "octocat/Hello-World")]).await;
+        let forge = FakeForge::with_pulls(SectionPulls {
+            incomplete: vec!["GitHub.com".to_string(), "ghe.corp.test".to_string()],
+            ..SectionPulls::default()
+        });
+
+        let found = section_pulls(&forge, &store, Section::ReviewRequested)
+            .await
+            .unwrap();
+
+        assert_eq!(found.incomplete, vec!["GitHub.com".to_string()]);
     }
 
     #[tokio::test]

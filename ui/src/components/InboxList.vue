@@ -15,6 +15,7 @@ const inbox = useInboxStore();
 const { selectedSection, selected, hasWatchedRepos, loading } = storeToRefs(inbox);
 const pulls = computed(() => selectedSection.value.pulls);
 const failures = computed(() => selectedSection.value.failures);
+const incomplete = computed(() => selectedSection.value.incomplete);
 const error = computed(() => selectedSection.value.error);
 
 /** Rows name their host only when the PRs span more than one. */
@@ -95,12 +96,20 @@ onMounted(inbox.load);
           >{{ formatAge(pr.created_at) }}</time>
         </li>
       </ul>
-      <!-- Only claim there's nothing when every host answered. -->
+      <!-- Only claim there's nothing when every host answered in full. -->
       <p
-        v-else-if="!failures.length && !error"
+        v-else-if="!failures.length && !incomplete.length && !error"
         class="text-sm text-muted-foreground"
       >
         {{ SECTION_EMPTY[selected] }}
+      </p>
+      <p
+        v-for="host in incomplete"
+        :key="host"
+        data-testid="inbox-incomplete"
+        class="text-xs text-muted-foreground"
+      >
+        {{ host }} didn't return all its results, so some PRs may be missing.
       </p>
     </template>
     <div
