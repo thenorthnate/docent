@@ -153,11 +153,10 @@ pub(crate) async fn fetch(
         let Ok(Ok(Response { data: Some(data) })) = answer else {
             break;
         };
+        // Rows look their details up by their own ID, so a node Docent
+        // didn't ask for is never shown.
         for node in data.nodes.into_iter().flatten() {
-            // Only IDs Docent asked for, so the response can't add rows.
-            if let Node::Pull(pull) = node
-                && batch.contains(&pull.id.as_str())
-            {
+            if let Node::Pull(pull) = node {
                 found.insert(pull.id.clone(), pull.details());
             }
         }
