@@ -20,7 +20,14 @@ afterEach(() => {
 });
 
 /** A fake Rust core holding `accounts` and a list of watched repos. */
-function mockCore(accounts: Account[], options: { failWatch?: Failure; failAccounts?: Failure } = {}) {
+type CoreOptions = {
+  failWatch?: Failure;
+  failAccounts?: Failure;
+  /** What Bind's folder picker yields: a clone path, a cancel, or a failure. */
+  bind?: { path: string } | "cancel" | Failure;
+};
+
+function mockCore(accounts: Account[], options: CoreOptions = {}) {
   const repos: Repo[] = [];
   const calls: Array<{ cmd: string; args: unknown }> = [];
   let nextId = 1;
@@ -47,6 +54,15 @@ function mockCore(accounts: Account[], options: { failWatch?: Failure; failAccou
           1,
         );
         return null;
+      }
+      case "bind_repo": {
+        const { id } = args as { id: number };
+        const bind = options.bind ?? "cancel";
+        if (bind === "cancel") return null;
+        if ("kind" in bind) throw bind;
+        const repo = repos.find((r) => r.id === id)!;
+        repo.local_path = bind.path;
+        return { ...repo };
       }
       case "list_section":
         return { pulls: [], failures: [] };
@@ -174,35 +190,87 @@ describe("WatchedRepos", () => {
     expect(rows(wrapper)).toHaveLength(0);
   });
 
-  it("shows Bind and Clone, not yet available, for a repo with no local clone", async () => {
+  function button(wrapper: Wrapper, label: string) {
+    return rows(wrapper)[0]
+      .findAll("button")
+      .find((b) => b.text() === label);
+  }
+
+  it("offers Bind, and Clone as coming soon, for a repo with no local clone", async () => {
     mockCore([{ host: "github.com", login: "octocat" }]);
     const wrapper = await mountRepos();
 
     await watch(wrapper, "octocat/Hello-World");
 
-    for (const label of ["Bind", "Clone"]) {
-      const button = rows(wrapper)[0]
-        .findAll("button")
-        .find((b) => b.text() === label);
-      expect(button?.attributes("disabled"), label).toBeDefined();
-    }
+    expect(button(wrapper, "Bind")?.attributes("disabled")).toBeUndefined();
+    expect(button(wrapper, "Bind")?.attributes("title")).toContain("already have");
+    expect(button(wrapper, "Clone")?.attributes("disabled")).toBeDefined();
+    // A disabled button ignores the pointer, so its tooltip sits on a wrapper.
+    const cloneTip = rows(wrapper)[0]
+      .findAll("[title]")
+      .find((el) => el.find("button").exists() && el.text() === "Clone");
+    expect(cloneTip?.attributes("title")).toContain("Coming soon");
   });
 
-  it.each([
-    ["Bind", "already have"],
-    ["Clone", "full clone"],
-  ])("explains what %s will do in a tooltip that shows while it is disabled", async (label, explains) => {
-    mockCore([{ host: "github.com", login: "octocat" }]);
+  it("binds a repo to the clone picked and shows its path instead of Bind and Clone", async () => {
+    const core = mockCore([{ host: "github.com", login: "octocat" }], {
+      bind: { path: "/Users/me/code/hello" },
+    });
     const wrapper = await mountRepos();
-
     await watch(wrapper, "octocat/Hello-World");
 
-    // A disabled button ignores the pointer, so the tooltip sits on its wrapper.
-    const tooltip = rows(wrapper)[0]
-      .findAll("[title]")
-      .find((el) => el.find("button").exists() && el.text() === label);
-    expect(tooltip?.attributes("title")).toContain(explains);
-    expect(tooltip?.attributes("title")).toContain("Coming soon");
+    await button(wrapper, "Bind")!.trigger("click");
+    await flushPromises();
+
+    expect(core.calls).toContainEqual({ cmd: "bind_repo", args: { id: 1 } });
+    expect(rows(wrapper)[0].text()).toContain("/Users/me/code/hello");
+    expect(button(wrapper, "Bind")).toBeUndefined();
+    expect(button(wrapper, "Clone")).toBeUndefined();
+  });
+
+  it("leaves the repo unbound, with no error, when the picker is cancelled", async () => {
+    mockCore([{ host: "github.com", login: "octocat" }], { bind: "cancel" });
+    const wrapper = await mountRepos();
+    await watch(wrapper, "octocat/Hello-World");
+
+    await button(wrapper, "Bind")!.trigger("click");
+    await flushPromises();
+
+    expect(button(wrapper, "Bind")).toBeDefined();
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
+  });
+
+  it("shows why a folder was rejected and keeps Bind", async () => {
+    const failure = {
+      kind: "no_matching_remote",
+      message: "None of this clone's remotes point at github.com:octocat/Hello-World.",
+    };
+    mockCore([{ host: "github.com", login: "octocat" }], { bind: failure });
+    const wrapper = await mountRepos();
+    await watch(wrapper, "octocat/Hello-World");
+
+    await button(wrapper, "Bind")!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[role=alert]").text()).toBe(failure.message);
+    expect(button(wrapper, "Bind")).toBeDefined();
+  });
+
+  it("shows the clone path of a repo bound earlier", async () => {
+    const core = mockCore([{ host: "github.com", login: "octocat" }]);
+    core.repos.push({
+      id: 3,
+      host: "github.com",
+      owner: "octocat",
+      name: "Hello-World",
+      default_branch: "main",
+      local_path: "/Users/me/code/hello",
+    });
+
+    const wrapper = await mountRepos();
+
+    expect(rows(wrapper)[0].text()).toContain("/Users/me/code/hello");
+    expect(button(wrapper, "Bind")).toBeUndefined();
   });
 
   it("names each repo's host when the watched repos span hosts, even with none connected", async () => {
