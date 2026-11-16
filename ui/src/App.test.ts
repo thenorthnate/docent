@@ -65,6 +65,18 @@ describe("App shell", () => {
     expect(wrapper.get("main h1").text()).toBe(name);
   });
 
+  it("names a rail button in a tooltip on focus, not a native title", async () => {
+    const { wrapper } = await mountApp("/inbox");
+
+    const review = railButton(wrapper, "Review");
+    expect(review.attributes("title")).toBeUndefined();
+    await review.trigger("focus");
+    await flushPromises();
+
+    expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe("Review");
+    wrapper.unmount();
+  });
+
   it("clicking the active icon closes its drawer and keeps the page", async () => {
     const { wrapper, router } = await mountApp("/review");
     expect(railButton(wrapper, "Review").attributes("aria-expanded")).toBe("true");
