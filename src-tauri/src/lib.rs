@@ -146,7 +146,7 @@ async fn bind_repo(
         kind: "invalid_path",
         message: err.to_string(),
     })?;
-    bind::bind(&store, &state.git().await, id, &folder)
+    bind::bind(&store, &state.git().await, &repo, &folder)
         .await
         .map(Some)
 }

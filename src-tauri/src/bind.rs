@@ -3,19 +3,18 @@
 use std::path::Path;
 
 use docent_git::Git;
-use docent_store::{RepoId, Store, WatchedRepo};
+use docent_store::{Store, WatchedRepo};
 
 use crate::command_error::CommandError;
 
-/// Binds watched repo `id` to the clone containing `folder`, once git
-/// confirms one of its remotes is that repo. Nothing is stored otherwise.
+/// Binds watched `repo` to the clone containing `folder`, once git confirms
+/// one of its remotes is that repo. Nothing is stored otherwise.
 pub async fn bind(
     store: &Store,
     git: &Git,
-    id: RepoId,
+    repo: &WatchedRepo,
     folder: &Path,
 ) -> Result<WatchedRepo, CommandError> {
-    let repo = store.watched_repo(id).await?;
     let clone = git
         .check_clone(folder, &repo.host, &repo.owner, &repo.name)
         .await?;
@@ -26,5 +25,34 @@ pub async fn bind(
             clone.path.display()
         ),
     })?;
-    Ok(store.bind_repo(id, path).await?)
+    Ok(store.bind_repo(repo.id, path).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use docent_store::NewRepo;
+
+    async fn watched_hello_world(store: &Store) -> WatchedRepo {
+        let account = store.upsert_account("github.com", "octocat").await.unwrap();
+        let repo = NewRepo {
+            owner: "octocat".into(),
+            name: "Hello-World".into(),
+            default_branch: "main".into(),
+        };
+        store.watch_repo(account, &repo).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_rejected_folder_leaves_the_repo_unbound() {
+        let store = Store::open_in_memory().await.unwrap();
+        let repo = watched_hello_world(&store).await;
+        let folder = tempfile::tempdir().unwrap();
+        let git = Git::new(std::env::var_os("PATH").expect("tests run with a PATH"));
+
+        let err = bind(&store, &git, &repo, folder.path()).await.unwrap_err();
+
+        assert_eq!(err.kind, "not_a_repo");
+        assert_eq!(store.watched_repo(repo.id).await.unwrap().local_path, None);
+    }
 }
