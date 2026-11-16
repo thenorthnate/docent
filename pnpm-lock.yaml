@@ -178,6 +178,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2
         version: 2.12.4
+      '@vueuse/core':
+        specifier: ^14.4.0
+        version: 14.4.0(vue@3.5.45(typescript@6.0.3))
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
