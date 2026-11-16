@@ -1,0 +1,32 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "PR_kwDOAAABHM4AAAFT",
+        "additions": 120,
+        "deletions": 30,
+        "changedFiles": 4,
+        "reviewDecision": "APPROVED",
+        "reviews": { "totalCount": 2 },
+        "commits": {
+          "nodes": [
+            { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }
+          ]
+        }
+      },
+      {
+        "id": "PR_kwDOAAAB0c4AAAAq",
+        "additions": 3,
+        "deletions": 0,
+        "changedFiles": 1,
+        "reviewDecision": null,
+        "reviews": { "totalCount": 0 },
+        "commits": {
+          "nodes": [
+            { "commit": { "statusCheckRollup": null } }
+          ]
+        }
+      }
+    ]
+  }
+}

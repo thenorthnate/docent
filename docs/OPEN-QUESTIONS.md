@@ -169,6 +169,15 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | When the `gh` token is read | When you connect a host, and again at startup for each remembered host (#13). Only the host name and login are stored, never the token. The startup reconnect runs in the background; commands that need accounts wait for it. It only reads the login shell's `PATH` when there is a host to reconnect. A host that fails stays listed with its error rather than being forgotten |
 | Login shell environment | Only `PATH` is read from the login shell, and only its absolute entries. It is passed to child processes explicitly; Docent's own environment is not changed |
 
+### Added while building inbox rows (#17)
+
+| Topic | Decision |
+|---|---|
+| Row layout | Follows the mockup: a three-line card per PR, not one line of columns, which overflowed the middle pane |
+| Review state on the row | Shown as a chip, though the mockup shows it only in the preview; #17 asks for it on the row |
+| Size buckets | XS < 10, S < 100, M < 500, L ≥ 500 lines added plus deleted. Files changed are in the size tooltip |
+| Tooltips | shadcn-vue Tooltip, for the row's CI icon and size and for the activity bar, which drops native `title` |
+
 ### Added while designing the review lifecycle
 
 GitHub's `review-requested:@me` drops a PR once you review it, and team requests vanish when a teammate picks them up, so PRs disappeared from the inbox while still needing you. See the review lifecycle in `PLAN.md` 5.2.

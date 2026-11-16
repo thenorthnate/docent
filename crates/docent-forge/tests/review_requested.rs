@@ -44,6 +44,7 @@ fn pull(
         author: author.to_string(),
         created_at: created_at.to_string(),
         body: body.map(str::to_string),
+        details: None,
     }
 }
 

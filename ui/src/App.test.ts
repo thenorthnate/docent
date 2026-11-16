@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "vue-router";
@@ -63,6 +63,17 @@ describe("App shell", () => {
     expect(railButton(wrapper, name).attributes("aria-current")).toBe("page");
     expect(wrapper.get('[data-testid="drawer"] h2').text()).toBe(name);
     expect(wrapper.get("main h1").text()).toBe(name);
+  });
+
+  it("names a rail button in a tooltip on focus, not a native title", async () => {
+    const { wrapper } = await mountApp("/inbox");
+
+    const review = railButton(wrapper, "Review");
+    expect(review.attributes("title")).toBeUndefined();
+    await review.trigger("focus");
+
+    await vi.waitFor(() => expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe("Review"));
+    wrapper.unmount();
   });
 
   it("clicking the active icon closes its drawer and keeps the page", async () => {

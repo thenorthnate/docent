@@ -164,7 +164,7 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent reads `PA
 - Two quiet groups sit under Review requested: **Waiting on author** and **Could review**. Together with Review requested they make the **review lifecycle** below, and each PR is in exactly one of the three. The other sections are separate views and may repeat a PR.
 - One quiet line for what's filtered out, e.g. "2 review requests in unwatched repos", with a **Watch** button.
 - A watched repo with no local clone shows **Bind** and **Clone**.
-- Per row: title, repo, author, CI status, review state, size and age.
+- Per row: title, repo, author, CI status, review state, size and age, laid out as in the mockup. The first line has a CI icon, then the repo, the author and the age. The title is on the second line. The third line holds chips: the review state, and the size as a bucket with its changed lines (`M · 305 lines`). Buckets, by lines added plus deleted: **XS** under 10, **S** under 100, **M** under 500, **L** 500 and over. The CI icon and the size chip explain themselves in tooltips (the size tooltip gives `+added −deleted · N files`).
 - **M4**: an **"updated since your last review"** badge with counts (`+3 commits · 5 comments`). It needs the review state from 5.3, which arrives in M4.
 - Filters and saved views. Keyboard navigation (j/k, enter).
 

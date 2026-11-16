@@ -68,6 +68,7 @@ mod tests {
             author: "mona".to_string(),
             created_at: created_at.to_string(),
             body: None,
+            details: None,
         }
     }
 

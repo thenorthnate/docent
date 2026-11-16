@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, watch } from "vue";
+import { computed, nextTick, onMounted, watch, type Component } from "vue";
+import { CircleCheck, CircleDashed, CircleX, Clock } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
-import { pullKey } from "@/lib/pull";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CI_LABELS, REVIEW_LABELS, pullKey, sizeBreakdown, sizeLabel } from "@/lib/pull";
 import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
-import { useInboxStore, type PullSummary } from "@/stores/inbox";
+import { useInboxStore, type CiStatus, type PullSummary, type ReviewState } from "@/stores/inbox";
 
 /** The selected PR's key, from `pullKey`; `null` when none is. */
 const selectedPull = defineModel<string | null>("selectedPull", { default: null });
@@ -17,6 +19,23 @@ const pulls = computed(() => selectedSection.value.pulls);
 const failures = computed(() => selectedSection.value.failures);
 const incomplete = computed(() => selectedSection.value.incomplete);
 const error = computed(() => selectedSection.value.error);
+
+/** Each CI status's icon and colour. */
+const CI_ICONS: Record<CiStatus, { icon: Component; tone: string }> = {
+  passing: { icon: CircleCheck, tone: "text-emerald-600 dark:text-emerald-400" },
+  failing: { icon: CircleX, tone: "text-destructive" },
+  pending: { icon: Clock, tone: "text-amber-600 dark:text-amber-400" },
+  no_checks: { icon: CircleDashed, tone: "text-muted-foreground" },
+};
+
+/** Each review state's chip colour. */
+const REVIEW_TONES: Record<ReviewState, string> = {
+  approved: "text-emerald-600 dark:text-emerald-400",
+  changes_requested: "text-destructive",
+  review_required: "text-muted-foreground",
+  reviewed: "text-muted-foreground",
+  no_reviews: "text-muted-foreground",
+};
 
 /** Rows name their host only when the PRs span more than one. */
 const showHost = computed(() => new Set(pulls.value.map((pr) => pr.host)).size > 1);
@@ -80,20 +99,59 @@ onMounted(inbox.load);
           role="option"
           :aria-selected="index === selectedIndex"
           data-testid="inbox-row"
-          class="flex cursor-default items-baseline gap-3 px-3 py-2 text-sm select-none aria-selected:bg-accent"
+          class="cursor-default space-y-1 px-3 py-2 text-sm select-none aria-selected:bg-accent"
           @click="selectedPull = pullKey(pr)"
           @dblclick="emit('open', pr)"
         >
-          <span class="min-w-0 flex-1 truncate font-medium">{{ pr.title }}</span>
-          <span class="shrink-0 text-muted-foreground">
-            <template v-if="showHost">{{ pr.host }}:</template>{{ pr.owner }}/{{ pr.repo }}
-          </span>
-          <span class="shrink-0 text-muted-foreground">{{ pr.author }}</span>
-          <time
-            class="w-16 shrink-0 text-right text-muted-foreground tabular-nums"
-            :datetime="pr.created_at"
-            :title="pr.created_at"
-          >{{ formatAge(pr.created_at) }}</time>
+          <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Tooltip v-if="pr.details">
+              <TooltipTrigger as-child>
+                <span
+                  data-testid="row-ci"
+                  class="shrink-0"
+                  :class="CI_ICONS[pr.details.ci].tone"
+                >
+                  <component
+                    :is="CI_ICONS[pr.details.ci].icon"
+                    class="size-3.5"
+                    aria-hidden="true"
+                  />
+                  <span class="sr-only">{{ CI_LABELS[pr.details.ci] }}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{{ CI_LABELS[pr.details.ci] }}</TooltipContent>
+            </Tooltip>
+            <span class="min-w-0 truncate">
+              <template v-if="showHost">{{ pr.host }}:</template>{{ pr.owner }}/{{ pr.repo }} · {{ pr.author }}
+            </span>
+            <time
+              class="ml-auto shrink-0 tabular-nums"
+              :datetime="pr.created_at"
+              :title="pr.created_at"
+            >{{ formatAge(pr.created_at) }}</time>
+          </div>
+          <p class="truncate font-medium">
+            {{ pr.title }}
+          </p>
+          <div
+            v-if="pr.details"
+            class="flex flex-wrap gap-1.5 text-xs"
+          >
+            <span
+              data-testid="row-review"
+              class="rounded-sm border px-1.5"
+              :class="REVIEW_TONES[pr.details.review]"
+            >{{ REVIEW_LABELS[pr.details.review] }}</span>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <span
+                  data-testid="row-size"
+                  class="rounded-sm bg-muted px-1.5 tabular-nums"
+                >{{ sizeLabel(pr.details) }}</span>
+              </TooltipTrigger>
+              <TooltipContent>{{ sizeBreakdown(pr.details) }}</TooltipContent>
+            </Tooltip>
+          </div>
         </li>
       </ul>
       <!-- Only claim there's nothing when every host answered in full. -->

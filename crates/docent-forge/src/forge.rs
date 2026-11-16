@@ -22,6 +22,47 @@ pub struct PullSummary {
     /// The PR's description as the author wrote it (Markdown), or `None`
     /// when it has none. Untrusted: shown as text, never as HTML.
     pub body: Option<String>,
+    /// CI status, review state and size, or `None` when the forge couldn't
+    /// say. They're extras: a row without them still shows.
+    pub details: Option<PullDetails>,
+}
+
+/// What an inbox row shows beyond the search result.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PullDetails {
+    pub ci: CiStatus,
+    pub review: ReviewState,
+    /// Lines added and deleted, and files changed, across the whole PR.
+    pub additions: u64,
+    pub deletions: u64,
+    pub changed_files: u64,
+}
+
+/// The combined state of the checks on a PR's head commit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CiStatus {
+    Passing,
+    Failing,
+    /// Still running, or waiting on a check that hasn't reported.
+    Pending,
+    /// The head commit has no checks or statuses.
+    NoChecks,
+}
+
+/// Where a PR stands with its reviewers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewState {
+    Approved,
+    ChangesRequested,
+    /// The repo requires an approving review and there isn't one yet.
+    ReviewRequired,
+    /// Reviewed, in a repo that doesn't require reviews, so there's no
+    /// decision.
+    Reviewed,
+    /// No reviews, in a repo that doesn't require them.
+    NoReviews,
 }
 
 /// A host that could not be asked, and why.
@@ -79,6 +120,7 @@ mod tests {
                 author: "mona".to_string(),
                 created_at: "2026-11-10T09:00:00Z".to_string(),
                 body: Some("Say hello properly.".to_string()),
+                details: None,
             }],
             failures: vec![HostFailure {
                 host: "ghe.corp.test".to_string(),
@@ -102,6 +144,7 @@ mod tests {
                     "author": "mona",
                     "created_at": "2026-11-10T09:00:00Z",
                     "body": "Say hello properly.",
+                    "details": null,
                 }],
                 "failures": [{
                     "host": "ghe.corp.test",
