@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createPinia } from "pinia";
+import { defineComponent, h } from "vue";
 import InboxList from "./InboxList.vue";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import WatchedRepos from "./WatchedRepos.vue";
 import { useInboxStore } from "@/stores/inbox";
 
@@ -76,7 +78,9 @@ function mockCore(state: {
 }
 
 async function mountList() {
-  const wrapper = mount(InboxList, { global: { plugins: [createPinia()] } });
+  // The app provides tooltips from its root.
+  const Root = defineComponent(() => () => h(TooltipProvider, () => h(InboxList)));
+  const wrapper = mount(Root, { global: { plugins: [createPinia()] } });
   await flushPromises();
   return wrapper;
 }
@@ -118,7 +122,40 @@ describe("InboxList", () => {
     const row = rows(wrapper)[0];
     expect(row.get("[data-testid=row-ci]").text()).toBe("Checks failing");
     expect(row.get("[data-testid=row-review]").text()).toBe("Changes requested");
-    expect(row.get("[data-testid=row-size]").text()).toBe("+120 −30 · 4 files");
+    expect(row.get("[data-testid=row-size]").text()).toBe("M · 150 lines");
+  });
+
+  it.each([
+    ["the CI icon", "row-ci", "Checks failing"],
+    ["the size", "row-size", "+120 −30 · 4 files"],
+  ])("explains %s in a tooltip on hover", async (_, testid, tooltip) => {
+    const details = { ci: "failing", review: "approved", additions: 120, deletions: 30, changed_files: 4 };
+    mockCore({ repos: [watchedRepo], pulls: [pull({ details })] });
+    const wrapper = await mountList();
+
+    await rows(wrapper)[0].get(`[data-testid=${testid}]`).trigger("pointermove");
+    await flushPromises();
+
+    expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe(tooltip);
+    wrapper.unmount();
+  });
+
+  it.each([
+    [0, 1, "XS · 1 line"],
+    [5, 4, "XS · 9 lines"],
+    [10, 0, "S · 10 lines"],
+    [60, 39, "S · 99 lines"],
+    [100, 0, "M · 100 lines"],
+    [400, 99, "M · 499 lines"],
+    [250, 250, "L · 500 lines"],
+    [1000, 210, "L · 1,210 lines"],
+  ])("sizes +%i −%i as %s", async (additions, deletions, label) => {
+    const details = { ci: "passing", review: "approved", additions, deletions, changed_files: 1 };
+    mockCore({ repos: [watchedRepo], pulls: [pull({ details })] });
+
+    const wrapper = await mountList();
+
+    expect(rows(wrapper)[0].get("[data-testid=row-size]").text()).toBe(label);
   });
 
   it("says when a PR has no checks and no reviews", async () => {
@@ -130,7 +167,7 @@ describe("InboxList", () => {
     const row = rows(wrapper)[0];
     expect(row.get("[data-testid=row-ci]").text()).toBe("No checks");
     expect(row.get("[data-testid=row-review]").text()).toBe("No reviews");
-    expect(row.get("[data-testid=row-size]").text()).toBe("+3 −0 · 1 file");
+    expect(row.get("[data-testid=row-size]").text()).toBe("XS · 3 lines");
   });
 
   it("still shows a row whose details the forge couldn't give", async () => {
