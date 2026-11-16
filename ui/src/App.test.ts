@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "vue-router";
@@ -71,9 +71,8 @@ describe("App shell", () => {
     const review = railButton(wrapper, "Review");
     expect(review.attributes("title")).toBeUndefined();
     await review.trigger("focus");
-    await flushPromises();
 
-    expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe("Review");
+    await vi.waitFor(() => expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe("Review"));
     wrapper.unmount();
   });
 

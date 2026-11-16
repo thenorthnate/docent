@@ -97,6 +97,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   clearMocks();
+  // Tooltips render in a portal; don't let one outlive its test.
+  document.body.innerHTML = "";
 });
 
 describe("InboxList", () => {
@@ -134,9 +136,9 @@ describe("InboxList", () => {
     const wrapper = await mountList();
 
     await rows(wrapper)[0].get(`[data-testid=${testid}]`).trigger("pointermove");
-    await flushPromises();
 
-    expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe(tooltip);
+    // The tooltip opens on a timer, in a portal on the body.
+    await vi.waitFor(() => expect(document.body.querySelector("[role=tooltip]")?.textContent).toBe(tooltip));
     wrapper.unmount();
   });
 
