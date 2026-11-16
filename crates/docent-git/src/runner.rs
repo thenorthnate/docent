@@ -42,6 +42,7 @@ impl Git {
 
     /// Like [`Git::new`], but filters `parent` instead of this process's
     /// environment. For tests.
+    #[doc(hidden)]
     pub fn with_env(
         path: OsString,
         parent: impl IntoIterator<Item = (OsString, OsString)>,

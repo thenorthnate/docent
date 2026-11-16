@@ -31,7 +31,9 @@ impl Git {
         }
         let top = match self.run(folder, &["rev-parse", "--show-toplevel"]).await {
             Ok(out) => PathBuf::from(out.trim_end_matches('\n')),
-            Err(GitError::Failed(_)) => return Err(not_a_repo()),
+            Err(GitError::Failed(why)) if why.contains("not a git repository") => {
+                return Err(not_a_repo());
+            }
             Err(err) => return Err(err),
         };
         if top.as_os_str().is_empty() {

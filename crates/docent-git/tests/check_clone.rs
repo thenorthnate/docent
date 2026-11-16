@@ -195,3 +195,29 @@ async fn checking_a_clone_runs_none_of_its_configured_commands() {
 
     assert!(!marker.exists(), "a repo-configured command ran");
 }
+
+/// Only "not a git repository" means the folder isn't a clone. Other
+/// failures, such as git refusing a clone it considers unsafe, keep git's
+/// own message so the user can act on it.
+#[cfg(unix)]
+#[tokio::test]
+async fn other_git_failures_keep_gits_message() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = tempfile::tempdir().expect("temp dir");
+    let fake = bin.path().join("git");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\necho \"fatal: detected dubious ownership in repository at '/x'\" >&2\nexit 128\n",
+    )
+    .expect("write fake git");
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+    let err = Git::new(bin.path().as_os_str().to_owned())
+        .check_clone(bin.path(), "github.com", "octocat", "Hello-World")
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), "git_failed", "{err:?}");
+    assert!(err.to_string().contains("dubious ownership"), "{err}");
+}
