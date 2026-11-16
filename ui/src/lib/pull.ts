@@ -22,8 +22,15 @@ export const REVIEW_LABELS: Record<ReviewState, string> = {
   no_reviews: "No reviews",
 };
 
-/** A PR's size as a row shows it, like `+120 −30 · 4 files`. */
-export function formatSize(details: PullDetails): string {
+/** A PR's size bucket and changed lines, like `M · 305 lines`. */
+export function sizeLabel(details: PullDetails): string {
+  const lines = details.additions + details.deletions;
+  const bucket = lines < 10 ? "XS" : lines < 100 ? "S" : lines < 500 ? "M" : "L";
+  return `${bucket} · ${lines.toLocaleString("en-US")} ${lines === 1 ? "line" : "lines"}`;
+}
+
+/** A PR's size in full, like `+120 −30 · 4 files`. */
+export function sizeBreakdown(details: PullDetails): string {
   const files = details.changed_files === 1 ? "file" : "files";
   return `+${details.additions} −${details.deletions} · ${details.changed_files} ${files}`;
 }
