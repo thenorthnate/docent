@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { RouterLink, useRoute } from "vue-router";
+import PrWorktree from "@/components/PrWorktree.vue";
 
 const route = useRoute();
 
 /** The opened PR, from the `review-pr` route; `null` on plain `/review`. */
 const pr = computed(() => {
   if (route.name !== "review-pr") return null;
-  const { owner, repo, number } = route.params as Record<string, string>;
-  return { owner, repo, number };
+  const { host, owner, repo, number } = route.params as Record<string, string>;
+  return { host, owner, repo, number };
 });
 </script>
 
@@ -38,9 +39,12 @@ const pr = computed(() => {
         </li>
       </ol>
     </nav>
-    <p class="text-sm text-muted-foreground">
-      The review view is coming in a later version.
-    </p>
+    <PrWorktree
+      :host="pr.host"
+      :owner="pr.owner"
+      :repo="pr.repo"
+      :number="Number(pr.number)"
+    />
   </div>
   <div
     v-else
