@@ -10,7 +10,7 @@ pub use repo_name::RepoName;
 use octocrab::{Octocrab, Page};
 use tokio::time::Instant;
 
-use crate::{ConnectError, Host, PullSummary, Section, Token};
+use crate::{CiStatus, ConnectError, Host, PullSummary, Section, Token};
 
 #[derive(serde::Deserialize)]
 struct User {
@@ -62,6 +62,18 @@ fn client(host: &Host, api_base: &str, token: &Token) -> Result<Octocrab, Connec
 pub(crate) fn graphql_base(api_base: &str) -> &str {
     let base = api_base.trim_end_matches('/');
     base.strip_suffix("/v3").unwrap_or(base)
+}
+
+/// A head commit's CI status from its `statusCheckRollup.state`, or `None`
+/// when it has no checks or statuses.
+pub(crate) fn ci_status(rollup_state: Option<&str>) -> CiStatus {
+    match rollup_state {
+        None => CiStatus::NoChecks,
+        Some("SUCCESS") => CiStatus::Passing,
+        Some("FAILURE" | "ERROR") => CiStatus::Failing,
+        // `PENDING`, `EXPECTED`, and any state GitHub adds later: not settled.
+        Some(_) => CiStatus::Pending,
+    }
 }
 
 /// `GET path`, with errors mapped so none carries the response body.

@@ -186,7 +186,7 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | Images in PR Markdown | Shown when served over https (`img-src 'self' data: https:`), as on GitHub. The trade-off: opening a PR fetches from hosts its author chose, which tells them when you looked |
 | Links in PR Markdown | Don't navigate: a click would take the app window away from Docent. The URL shows on hover. Opening links in the system browser is a follow-up |
 | Markdown rendering | `markdown-it` with `html: false`: raw HTML shows as text. It is the only path from forge content to `v-html` |
-| Timeline and checks | The first 100 of each, from one GraphQL query. A longer timeline says it was cut short |
+| Timeline and checks | The latest 100 timeline events (the newest reviews matter most) and the first 100 checks, from one GraphQL query. A longer timeline says it was cut short |
 
 ### Added while designing the review lifecycle
 

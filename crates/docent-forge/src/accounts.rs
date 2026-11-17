@@ -203,7 +203,7 @@ impl Accounts {
             }),
             Err(github::ApiError::NotFound) => Err(RepoError::NotFound {
                 host: host.as_str().to_string(),
-                repo: format!("{}/{}", repo.owner(), repo.name()),
+                repo: repo.to_string(),
             }),
             Err(github::ApiError::Connect(err)) => Err(err.into()),
         }
@@ -289,7 +289,7 @@ impl Forge for Accounts {
             Ok(Ok(overview)) => Ok(overview),
             Ok(Err(github::ApiError::NotFound)) => Err(RepoError::PullNotFound {
                 host: host.as_str().to_string(),
-                repo: format!("{}/{}", repo.owner(), repo.name()),
+                repo: repo.to_string(),
                 number,
             }),
             Ok(Err(github::ApiError::Connect(err))) => Err(err.into()),

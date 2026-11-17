@@ -66,7 +66,7 @@ impl Forge for FakeForge {
         repo: &RepoName,
         number: u64,
     ) -> Result<PullOverview, RepoError> {
-        let name = format!("{}/{}", repo.owner(), repo.name());
+        let name = repo.to_string();
         self.overviews_asked
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

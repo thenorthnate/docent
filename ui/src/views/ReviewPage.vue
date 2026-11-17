@@ -4,7 +4,7 @@ import { RouterLink, useRoute } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
 import PullOverview from "@/components/PullOverview.vue";
 import { messageOf } from "@/lib/ipc";
-import { CI_ICONS, CI_LABELS } from "@/lib/pull";
+import { CI_ICONS, CI_LABELS, pullKey } from "@/lib/pull";
 import type { PullOverview as Overview } from "@/lib/review";
 
 const route = useRoute();
@@ -23,9 +23,11 @@ const loading = ref(false);
 /** Counts loads, so only the latest one started may write its answer. */
 let latest = 0;
 
+// Keyed on the PR itself, so a route change that keeps the same PR doesn't refetch.
 watch(
-  pr,
-  async (opened) => {
+  () => (pr.value ? pullKey(pr.value) : null),
+  async () => {
+    const opened = pr.value;
     const id = ++latest;
     overview.value = null;
     error.value = null;

@@ -216,7 +216,7 @@ async fn a_long_timeline_is_marked_truncated_and_unknown_events_are_skipped() {
         "author": null,
         "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] },
         "timelineItems": {
-            "pageInfo": { "hasNextPage": true },
+            "pageInfo": { "hasPreviousPage": true },
             "nodes": [{ "__typename": "SomethingNew" }, {}],
         },
     } } } });

@@ -8,9 +8,9 @@ export type PullOverview = {
   body: string | null;
   ci: CiStatus;
   checks: Check[];
-  /** Commits, reviews and comments, oldest first. */
+  /** The latest commits, reviews and comments, oldest first. */
   timeline: TimelineItem[];
-  /** There are more timeline items than Docent fetched. */
+  /** There are earlier timeline items than Docent fetched. */
   timeline_truncated: boolean;
 };
 

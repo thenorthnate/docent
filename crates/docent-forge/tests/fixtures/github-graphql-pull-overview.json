@@ -26,7 +26,7 @@
           ]
         },
         "timelineItems": {
-          "pageInfo": { "hasNextPage": false },
+          "pageInfo": { "hasPreviousPage": false },
           "nodes": [
             {
               "__typename": "PullRequestCommit",

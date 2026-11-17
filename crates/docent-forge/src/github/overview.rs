@@ -5,21 +5,21 @@
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
-use super::{ApiError, RepoName, graphql_base, post};
+use super::{ApiError, RepoName, ci_status, graphql_base, post};
 use crate::{
-    Check, CheckState, CiStatus, ConnectError, Host, PullOverview, ReviewVerdict, TimelineItem,
-    Token,
+    Check, CheckState, ConnectError, Host, PullOverview, ReviewVerdict, TimelineItem, Token,
 };
 
-/// The query. It fetches up to 100 checks and timeline items, GitHub's limit
-/// per connection.
+/// The query. It fetches up to 100 checks and the latest 100 timeline items,
+/// GitHub's limit per connection: on a long PR, the newest reviews and
+/// comments matter most.
 const QUERY: &str = "query($owner: String!, $name: String!, $number: Int!) { \
     repository(owner: $owner, name: $name) { pullRequest(number: $number) { \
     title body author { login } \
     commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { \
         __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } } \
-    timelineItems(first: 100, itemTypes: [PULL_REQUEST_COMMIT, PULL_REQUEST_REVIEW, ISSUE_COMMENT]) { \
-        pageInfo { hasNextPage } nodes { __typename \
+    timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, PULL_REQUEST_REVIEW, ISSUE_COMMENT]) { \
+        pageInfo { hasPreviousPage } nodes { __typename \
         ... on PullRequestCommit { commit { oid messageHeadline committedDate author { name user { login } } } } \
         ... on PullRequestReview { author { login } state body submittedAt } \
         ... on IssueComment { author { login } body createdAt } } } } } }";
@@ -172,16 +172,6 @@ impl Context {
     }
 }
 
-/// The same mapping as an inbox row's CI status.
-fn ci_status(rollup: Option<&Rollup>) -> CiStatus {
-    match rollup.map(|rollup| rollup.state.as_str()) {
-        None => CiStatus::NoChecks,
-        Some("SUCCESS") => CiStatus::Passing,
-        Some("FAILURE" | "ERROR") => CiStatus::Failing,
-        Some(_) => CiStatus::Pending,
-    }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Timeline {
@@ -192,7 +182,7 @@ struct Timeline {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PageInfo {
-    has_next_page: bool,
+    has_previous_page: bool,
 }
 
 #[derive(Deserialize)]
@@ -289,7 +279,7 @@ impl PullNode {
             .into_iter()
             .last()
             .and_then(|node| node.commit.status_check_rollup);
-        let ci = ci_status(rollup.as_ref());
+        let ci = ci_status(rollup.as_ref().map(|rollup| rollup.state.as_str()));
         let checks = rollup
             .map(|rollup| rollup.contexts.nodes)
             .unwrap_or_default()
@@ -310,7 +300,7 @@ impl PullNode {
                 .filter_map(Lenient::known)
                 .filter_map(Event::into_item)
                 .collect(),
-            timeline_truncated: self.timeline_items.page_info.has_next_page,
+            timeline_truncated: self.timeline_items.page_info.has_previous_page,
         }
     }
 }

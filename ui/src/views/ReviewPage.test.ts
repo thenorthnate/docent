@@ -72,6 +72,18 @@ describe("ReviewPage", () => {
     expect(asked).toEqual([{ host: "github.com", owner: "octocat", repo: "Hello-World", number: 1347 }]);
   });
 
+  it("asks again only when another PR is opened", async () => {
+    const { router, asked } = await mountPage(PR_PATH);
+
+    await router.push(`${PR_PATH}?tab=overview`);
+    await flushPromises();
+    expect(asked).toHaveLength(1);
+
+    await router.push("/review/github.com/octocat/Hello-World/7");
+    await flushPromises();
+    expect(asked).toHaveLength(2);
+  });
+
   it("names the PR in the breadcrumb and shows its CI status in the top bar", async () => {
     const { wrapper } = await mountPage(PR_PATH);
 
@@ -153,7 +165,7 @@ describe("ReviewPage", () => {
   it("says when the timeline was cut short", async () => {
     const { wrapper } = await mountPage(PR_PATH, () => overview({ timeline_truncated: true }));
 
-    expect(section(wrapper, "Timeline").text()).toContain("Showing the first 100 events.");
+    expect(section(wrapper, "Timeline").text()).toContain("Showing the latest 100 events.");
   });
 
   it("shows why the overview couldn't load", async () => {

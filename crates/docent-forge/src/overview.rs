@@ -15,9 +15,9 @@ pub struct PullOverview {
     pub ci: CiStatus,
     /// The head commit's checks, in the forge's order.
     pub checks: Vec<Check>,
-    /// Commits, reviews and comments, oldest first.
+    /// The latest commits, reviews and comments, oldest first.
     pub timeline: Vec<TimelineItem>,
-    /// There are more timeline items than Docent fetched.
+    /// There are earlier timeline items than Docent fetched.
     pub timeline_truncated: bool,
 }
 

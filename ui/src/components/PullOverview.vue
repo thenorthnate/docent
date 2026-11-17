@@ -103,7 +103,7 @@ const CHECK_TONES: Record<CheckState, string> = {
         v-if="overview.timeline_truncated"
         class="text-sm text-muted-foreground"
       >
-        Showing the first 100 events.
+        Showing the latest 100 events.
       </p>
     </section>
   </div>

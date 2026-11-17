@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use serde::de::IgnoredAny;
 use tokio::time::Instant;
 
-use super::{client, graphql_base};
-use crate::{CiStatus, Host, PullDetails, ReviewState, Token};
+use super::{ci_status, client, graphql_base};
+use crate::{Host, PullDetails, ReviewState, Token};
 
 /// GraphQL's `nodes` takes at most 100 IDs.
 const MAX_NODE_IDS: usize = 100;
@@ -94,13 +94,7 @@ impl PullNode {
             .nodes
             .last()
             .and_then(|node| node.commit.status_check_rollup.as_ref());
-        let ci = match rollup.map(|rollup| rollup.state.as_str()) {
-            None => CiStatus::NoChecks,
-            Some("SUCCESS") => CiStatus::Passing,
-            Some("FAILURE" | "ERROR") => CiStatus::Failing,
-            // `PENDING`, `EXPECTED`, and any state GitHub adds later: not settled.
-            Some(_) => CiStatus::Pending,
-        };
+        let ci = ci_status(rollup.map(|rollup| rollup.state.as_str()));
         let review = match self.review_decision.as_deref() {
             Some("APPROVED") => ReviewState::Approved,
             Some("CHANGES_REQUESTED") => ReviewState::ChangesRequested,

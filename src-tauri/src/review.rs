@@ -5,6 +5,7 @@ use docent_forge::{Forge, PullOverview};
 use docent_store::Store;
 
 use crate::command_error::CommandError;
+use crate::inbox::is_watched;
 
 /// The overview of PR `number` in `owner/repo` on `host`. The names come
 /// from the page's URL, so they're parsed like typed input, and a repo that
@@ -19,19 +20,11 @@ pub async fn pull_overview(
 ) -> Result<PullOverview, CommandError> {
     let name = RepoName::parse(&format!("{owner}/{repo}"))?;
     let watched = store.watched_repos().await?;
-    // Host names, and GitHub owner and repo names, all ignore case.
-    let is_watched = watched.iter().any(|w| {
-        w.host.eq_ignore_ascii_case(host)
-            && w.owner.eq_ignore_ascii_case(name.owner())
-            && w.name.eq_ignore_ascii_case(name.name())
-    });
-    if !is_watched {
+    if !is_watched(&watched, host, name.owner(), name.name()) {
         return Err(CommandError {
             kind: "not_watched",
             message: format!(
-                "{}/{} on {host} isn't watched. Watch it in Settings → Repos to review its pull requests.",
-                name.owner(),
-                name.name()
+                "{name} on {host} isn't watched. Watch it in Settings → Repos to review its pull requests."
             ),
         });
     }
