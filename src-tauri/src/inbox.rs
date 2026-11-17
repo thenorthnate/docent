@@ -1,9 +1,19 @@
 //! The inbox's sections: the forge's searches, kept to watched repos.
 
 use docent_forge::{Forge, Section, SectionPulls};
-use docent_store::Store;
+use docent_store::{Store, WatchedRepo};
 
 use crate::command_error::CommandError;
+
+/// Whether `owner/repo` on `host` is among `watched`. Host names, and
+/// GitHub owner and repo names, all ignore case.
+pub fn is_watched(watched: &[WatchedRepo], host: &str, owner: &str, repo: &str) -> bool {
+    watched.iter().any(|w| {
+        w.host.eq_ignore_ascii_case(host)
+            && w.owner.eq_ignore_ascii_case(owner)
+            && w.name.eq_ignore_ascii_case(repo)
+    })
+}
 
 /// The open PRs in `section`, in watched repos only.
 pub async fn section_pulls(
@@ -15,18 +25,10 @@ pub async fn section_pulls(
     if watched.is_empty() {
         return Ok(SectionPulls::default());
     }
-    // Host names, and GitHub owner and repo names, all ignore case.
-    let is_watched = |host: &str, owner: &str, repo: &str| {
-        watched.iter().any(|w| {
-            w.host.eq_ignore_ascii_case(host)
-                && w.owner.eq_ignore_ascii_case(owner)
-                && w.name.eq_ignore_ascii_case(repo)
-        })
-    };
     let mut found = forge.search(section).await;
     found
         .pulls
-        .retain(|pull| is_watched(&pull.host, &pull.owner, &pull.repo));
+        .retain(|pull| is_watched(&watched, &pull.host, &pull.owner, &pull.repo));
     // RFC 3339 timestamps in UTC sort as text.
     found.pulls.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     // A host with nothing watched on it has nothing to miss.

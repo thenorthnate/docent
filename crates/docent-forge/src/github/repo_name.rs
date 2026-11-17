@@ -17,6 +17,13 @@ pub struct RepoName {
     name: String,
 }
 
+/// `owner/name`.
+impl std::fmt::Display for RepoName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.owner, self.name)
+    }
+}
+
 impl RepoName {
     /// Accepts `owner/name` with surrounding spaces. The owner is up to 39
     /// ASCII letters, digits, `-` or `_` (GitHub's login rules, plus the `_`
