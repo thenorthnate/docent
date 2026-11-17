@@ -4,6 +4,7 @@ mod inbox;
 mod remember;
 mod shell_env;
 mod watch;
+mod worktree;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -151,6 +152,31 @@ async fn bind_repo(
         .map(Some)
 }
 
+/// Opens PR `number` of `owner/repo` on `host` in its own worktree, under
+/// Docent's data folder. An unbound repo comes back as `unbound`, for the UI
+/// to offer Bind or Clone.
+#[tauri::command]
+async fn open_pr_worktree(
+    host: String,
+    owner: String,
+    repo: String,
+    number: u64,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<worktree::OpenedPr, CommandError> {
+    let worktrees = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| CommandError {
+            kind: "invalid_path",
+            message: format!("Docent couldn't find its data folder: {err}"),
+        })?
+        .join("worktrees");
+    let git = state.git().await;
+    worktree::open(&store, &git, &worktrees, &host, &owner, &repo, number).await
+}
+
 /// The open PRs in an inbox section (`review_requested`, `assigned`,
 /// `authored` or `mentioned`), in watched repos, from every connected host,
 /// newest first. Hosts that couldn't be asked are listed with their errors.
@@ -200,6 +226,7 @@ pub fn run() {
             list_accounts,
             list_section,
             list_watched_repos,
+            open_pr_worktree,
             unwatch_repo,
             watch_repo
         ])

@@ -48,6 +48,8 @@ pub enum StoreError {
     AlreadyWatched(String),
     #[error("No watched repo has id {0}.")]
     RepoNotFound(RepoId),
+    #[error("{0} isn't watched. Watch it in Settings → Watched repos to review its PRs.")]
+    NotWatched(String),
     #[error("Docent's database failed: {0}")]
     Database(String),
 }
@@ -58,6 +60,7 @@ impl StoreError {
         match self {
             Self::AlreadyWatched(_) => "already_watched",
             Self::RepoNotFound(_) => "repo_not_found",
+            Self::NotWatched(_) => "not_watched",
             Self::Database(_) => "database",
         }
     }
@@ -235,6 +238,26 @@ impl Store {
             .fetch_optional(&self.pool)
             .await?
             .ok_or(StoreError::RepoNotFound(id))
+    }
+
+    /// The watched repo `owner/name` on `host`. Names match in any case, as
+    /// on the forge.
+    pub async fn watched_repo_named(
+        &self,
+        host: &str,
+        owner: &str,
+        name: &str,
+    ) -> Result<WatchedRepo, StoreError> {
+        sqlx::query_as(select_repo!(
+            "WHERE accounts.host = ?1 AND repos.owner = ?2 AND repos.name = ?3 ",
+            "AND repos.watched = 1"
+        ))
+        .bind(host)
+        .bind(owner)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| StoreError::NotWatched(format!("{host}:{owner}/{name}")))
     }
 
     /// Binds a watched repo to the local clone at `local_path`, replacing

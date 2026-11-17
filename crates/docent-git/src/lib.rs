@@ -5,7 +5,9 @@ mod clone;
 mod error;
 mod remote;
 mod runner;
+mod worktree;
 
 pub use clone::BoundClone;
 pub use error::GitError;
 pub use runner::Git;
+pub use worktree::PrWorktree;
