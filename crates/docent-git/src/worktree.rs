@@ -49,6 +49,9 @@ impl Git {
                 "--no-tags",
                 "--no-write-fetch-head",
                 "--no-recurse-submodules",
+                // An empty refmap stops the remote's configured refspecs (say,
+                // `refs/pull/*` into `refs/remotes/`) updating the user's refs.
+                "--refmap=",
                 "--end-of-options",
                 remote,
                 &refspec,

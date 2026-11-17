@@ -270,3 +270,29 @@ async fn opening_a_pr_runs_none_of_the_clones_configured_commands() {
 
     assert!(!marker.exists(), "a clone-configured command ran");
 }
+
+/// Many users map PR heads into their remote-tracking refs. Docent's fetch
+/// must still write only under `refs/docent/*`.
+#[tokio::test]
+async fn a_configured_pull_refspec_does_not_touch_the_users_refs() {
+    let f = Fixture::new();
+    sh_git(
+        &f.clone,
+        &[
+            "config",
+            "--add",
+            "remote.origin.fetch",
+            "+refs/pull/*/head:refs/remotes/origin/pr/*",
+        ],
+    );
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let before = f.user_state();
+
+    git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .await
+        .expect("opens");
+
+    assert_eq!(f.user_state(), before, "the user's clone changed");
+}
