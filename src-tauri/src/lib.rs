@@ -235,4 +235,30 @@ mod tests {
 
         assert_eq!(Some(app_version()), conf["version"].as_str());
     }
+
+    /// One CSP directive's sources from `tauri.conf.json`'s `key` (`csp` or
+    /// `devCsp`).
+    fn csp_sources(key: &str, directive: &str) -> Vec<String> {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json is valid JSON");
+        let sources = conf["app"]["security"][key][directive]
+            .as_str()
+            .unwrap_or_else(|| panic!("{key} sets {directive}"));
+        sources.split_whitespace().map(str::to_string).collect()
+    }
+
+    /// PR bodies, comments and agent output are hostile (PLAN §5.6), so no
+    /// script may come from anywhere but the app's own bundle: no inline
+    /// script, no eval, no remote host. Tauri adds hashes for its own
+    /// injected scripts at build time.
+    #[test]
+    fn the_csp_runs_only_the_apps_own_scripts() {
+        for key in ["csp", "devCsp"] {
+            assert_eq!(csp_sources(key, "default-src"), ["'self'"], "{key}");
+            assert_eq!(csp_sources(key, "script-src"), ["'self'"], "{key}");
+            for directive in ["object-src", "frame-src", "base-uri", "form-action"] {
+                assert_eq!(csp_sources(key, directive), ["'none'"], "{key} {directive}");
+            }
+        }
+    }
 }
