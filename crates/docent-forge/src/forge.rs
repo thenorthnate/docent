@@ -4,7 +4,8 @@
 
 use std::future::Future;
 
-use crate::ConnectError;
+use crate::github::RepoName;
+use crate::{ConnectError, PullOverview, RepoError};
 
 /// An open pull request, as an inbox row shows it. Everything here came from
 /// the forge, so the UI shows it as text only.
@@ -102,6 +103,15 @@ pub trait Forge: Sync {
     /// The open PRs in `section`, from every connected host. Each host is
     /// asked on its own, so one failing host doesn't hide the others.
     fn search(&self, section: Section) -> impl Future<Output = SectionPulls> + Send;
+
+    /// The description, checks and timeline of PR `number` in `repo` on
+    /// `host`, for the review page's Overview tab.
+    fn pull_overview(
+        &self,
+        host: &str,
+        repo: &RepoName,
+        number: u64,
+    ) -> impl Future<Output = Result<PullOverview, RepoError>> + Send;
 }
 
 #[cfg(test)]

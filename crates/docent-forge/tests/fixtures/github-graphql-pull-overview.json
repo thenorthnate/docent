@@ -1,0 +1,81 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "title": "Fix the greeting",
+        "body": "Say hello **properly**.\n\nFixes #12.",
+        "author": { "login": "mona" },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "state": "FAILURE",
+                  "contexts": {
+                    "nodes": [
+                      { "__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS" },
+                      { "__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "FAILURE" },
+                      { "__typename": "CheckRun", "name": "lint", "status": "IN_PROGRESS", "conclusion": null },
+                      { "__typename": "CheckRun", "name": "deploy", "status": "COMPLETED", "conclusion": "SKIPPED" },
+                      { "__typename": "StatusContext", "context": "ci/legacy", "state": "PENDING" }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "timelineItems": {
+          "pageInfo": { "hasNextPage": false },
+          "nodes": [
+            {
+              "__typename": "PullRequestCommit",
+              "commit": {
+                "oid": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+                "messageHeadline": "Say hello properly",
+                "committedDate": "2026-11-10T09:00:00Z",
+                "author": { "name": "Mona Lisa", "user": { "login": "mona" } }
+              }
+            },
+            {
+              "__typename": "PullRequestCommit",
+              "commit": {
+                "oid": "c3d0be41ecbe669545ee3e94d31ed9a4bc91ee3c",
+                "messageHeadline": "Fix a typo",
+                "committedDate": "2026-11-10T10:00:00Z",
+                "author": { "name": "Someone Else", "user": null }
+              }
+            },
+            {
+              "__typename": "IssueComment",
+              "author": { "login": "hubot" },
+              "body": "Looks close.",
+              "createdAt": "2026-11-11T08:00:00Z"
+            },
+            {
+              "__typename": "PullRequestReview",
+              "author": { "login": "octocat" },
+              "state": "CHANGES_REQUESTED",
+              "body": "Please add a test.",
+              "submittedAt": "2026-11-11T09:00:00Z"
+            },
+            {
+              "__typename": "PullRequestReview",
+              "author": { "login": "octocat" },
+              "state": "PENDING",
+              "body": "A draft nobody else can see.",
+              "submittedAt": null
+            },
+            {
+              "__typename": "PullRequestReview",
+              "author": null,
+              "state": "APPROVED",
+              "body": "",
+              "submittedAt": "2026-11-12T09:00:00Z"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

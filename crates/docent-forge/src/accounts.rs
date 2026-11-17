@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use crate::github::{self, RepoName};
 use crate::{
-    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, RepoError, Section, SectionPulls,
-    Token,
+    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, PullOverview, RepoError, Section,
+    SectionPulls, Token,
 };
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
@@ -15,7 +15,8 @@ type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// How long an inbox search waits for one host, across all its pages, so one
-/// host that stops answering can't hide the others.
+/// host that stops answering can't hide the others. A PR's overview gets the
+/// same.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A connected host as the UI sees it. It never holds the token.
@@ -192,13 +193,7 @@ impl Accounts {
     /// and get its canonical name.
     pub async fn lookup_repo(&self, host: &str, repo: &RepoName) -> Result<ForgeRepo, RepoError> {
         let host = Host::parse(host)?;
-        let (account, token) = {
-            let by_host = self.lock();
-            let Some(Connection::Connected(account)) = by_host.get(&host) else {
-                return Err(RepoError::NotConnected(host.as_str().to_string()));
-            };
-            (account.summary(&host), Arc::clone(&account.token))
-        };
+        let (account, token) = self.connected(&host)?;
         match github::repo(&host, &(self.api_base)(&host), &token, repo).await {
             Ok(found) => Ok(ForgeRepo {
                 account,
@@ -212,6 +207,16 @@ impl Accounts {
             }),
             Err(github::ApiError::Connect(err)) => Err(err.into()),
         }
+    }
+
+    /// The account and token for `host`, if it is connected. The token is
+    /// shared, so no lock is held across an API call.
+    fn connected(&self, host: &Host) -> Result<(AccountSummary, Arc<Token>), RepoError> {
+        let by_host = self.lock();
+        let Some(Connection::Connected(account)) = by_host.get(host) else {
+            return Err(RepoError::NotConnected(host.as_str().to_string()));
+        };
+        Ok((account.summary(host), Arc::clone(&account.token)))
     }
 
     /// The user's hosts, sorted by host name. A host that failed to
@@ -268,5 +273,31 @@ impl Forge for Accounts {
             }
         }
         found
+    }
+
+    async fn pull_overview(
+        &self,
+        host: &str,
+        repo: &RepoName,
+        number: u64,
+    ) -> Result<PullOverview, RepoError> {
+        let host = Host::parse(host)?;
+        let (_, token) = self.connected(&host)?;
+        let api_base = (self.api_base)(&host);
+        let fetch = github::pull_overview(&host, &api_base, &token, repo, number);
+        match tokio::time::timeout(self.request_timeout, fetch).await {
+            Ok(Ok(overview)) => Ok(overview),
+            Ok(Err(github::ApiError::NotFound)) => Err(RepoError::PullNotFound {
+                host: host.as_str().to_string(),
+                repo: format!("{}/{}", repo.owner(), repo.name()),
+                number,
+            }),
+            Ok(Err(github::ApiError::Connect(err))) => Err(err.into()),
+            Err(_) => Err(ConnectError::Unreachable {
+                host: host.as_str().to_string(),
+                reason: "no answer in time".to_string(),
+            }
+            .into()),
+        }
     }
 }

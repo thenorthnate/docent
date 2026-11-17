@@ -19,6 +19,12 @@ pub enum RepoError {
     NotConnected(String),
     #[error("{host} has no repo {repo}, or your account can't see it.")]
     NotFound { host: String, repo: String },
+    #[error("{host} has no pull request {repo}#{number}, or your account can't see it.")]
+    PullNotFound {
+        host: String,
+        repo: String,
+        number: u64,
+    },
     #[error(transparent)]
     Connect(#[from] ConnectError),
 }
@@ -30,6 +36,7 @@ impl RepoError {
             Self::InvalidName(_) => "invalid_name",
             Self::NotConnected(_) => "not_connected",
             Self::NotFound { .. } => "not_found",
+            Self::PullNotFound { .. } => "pull_not_found",
             Self::Connect(err) => err.kind(),
         }
     }

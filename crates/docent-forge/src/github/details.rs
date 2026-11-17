@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::de::IgnoredAny;
 use tokio::time::Instant;
 
-use super::client;
+use super::{client, graphql_base};
 use crate::{CiStatus, Host, PullDetails, ReviewState, Token};
 
 /// GraphQL's `nodes` takes at most 100 IDs.
@@ -117,14 +117,6 @@ impl PullNode {
             changed_files: self.changed_files,
         }
     }
-}
-
-/// Where `api_base`'s GraphQL endpoint lives, less the `/graphql`:
-/// `https://api.github.com`, or `https://{host}/api` for GitHub Enterprise,
-/// whose REST API is under `/api/v3`.
-fn graphql_base(api_base: &str) -> &str {
-    let base = api_base.trim_end_matches('/');
-    base.strip_suffix("/v3").unwrap_or(base)
 }
 
 /// The details of the PRs with node IDs `ids`, keyed by ID, until
