@@ -228,6 +228,29 @@ impl Store {
         Ok(())
     }
 
+    /// The watched repo with this id.
+    pub async fn watched_repo(&self, id: RepoId) -> Result<WatchedRepo, StoreError> {
+        sqlx::query_as(select_repo!("WHERE repos.id = ?1 AND repos.watched = 1"))
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(StoreError::RepoNotFound(id))
+    }
+
+    /// Binds a watched repo to the local clone at `local_path`, replacing
+    /// any earlier binding. The caller checks the clone first.
+    pub async fn bind_repo(&self, id: RepoId, local_path: &str) -> Result<WatchedRepo, StoreError> {
+        let result = sqlx::query("UPDATE repos SET local_path = ?2 WHERE id = ?1 AND watched = 1")
+            .bind(id)
+            .bind(local_path)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(StoreError::RepoNotFound(id));
+        }
+        self.watched_repo(id).await
+    }
+
     async fn repo(&self, id: RepoId) -> Result<WatchedRepo, StoreError> {
         let repo = sqlx::query_as(select_repo!("WHERE repos.id = ?1"))
             .bind(id)

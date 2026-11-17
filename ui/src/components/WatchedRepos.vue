@@ -17,9 +17,8 @@ type WatchedRepo = {
   local_path: string | null;
 };
 
-/** What Bind and Clone will do (PLAN §4, "Repo binding"). */
-const BIND_TOOLTIP =
-  "Bind: point Docent at a clone of this repo you already have, so diffs come from it. Coming soon.";
+/** What Bind and Clone do (PLAN §4, "Repo binding"). */
+const BIND_TOOLTIP = "Point Docent at a clone of this repo you already have, so diffs come from it.";
 const CLONE_TOOLTIP =
   "Clone: make a full clone into a folder you pick, using your existing git credentials. Coming soon.";
 
@@ -74,6 +73,23 @@ async function watch() {
     error.value = messageOf(err);
   } finally {
     watching.value = false;
+  }
+}
+
+/** The repo whose folder picker is open, so its Bind can't be pressed twice. */
+const binding = ref<number | null>(null);
+
+/** The core opens the folder picker and checks the clone; `null` means cancelled. */
+async function bind(id: number) {
+  binding.value = id;
+  error.value = null;
+  try {
+    const bound = await invoke<WatchedRepo | null>("bind_repo", { id });
+    if (bound) await refresh();
+  } catch (err) {
+    error.value = messageOf(err);
+  } finally {
+    binding.value = null;
   }
 }
 
@@ -134,24 +150,30 @@ onMounted(refresh);
         >
           {{ r.host }}
         </p>
-        <!--
-          Placeholders until Bind and Clone land in their own slices. A
-          disabled button ignores the pointer, so each tooltip sits on a
-          wrapper that still receives the hover.
-        -->
+        <p
+          v-if="r.local_path"
+          class="truncate text-xs text-muted-foreground"
+          :title="r.local_path"
+        >
+          {{ r.local_path }}
+        </p>
         <div
-          v-if="!r.local_path"
+          v-else
           class="flex gap-1"
         >
-          <span :title="BIND_TOOLTIP">
-            <Button
-              variant="outline"
-              size="xs"
-              disabled
-            >
-              Bind
-            </Button>
-          </span>
+          <Button
+            variant="outline"
+            size="xs"
+            :title="BIND_TOOLTIP"
+            :disabled="binding !== null"
+            @click="bind(r.id)"
+          >
+            Bind
+          </Button>
+          <!--
+            A placeholder until Clone lands (#19). A disabled button ignores
+            the pointer, so the tooltip sits on a wrapper that still gets it.
+          -->
           <span :title="CLONE_TOOLTIP">
             <Button
               variant="outline"

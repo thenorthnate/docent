@@ -1,3 +1,4 @@
+mod bind;
 mod command_error;
 mod inbox;
 mod remember;
@@ -10,8 +11,10 @@ use std::time::Duration;
 
 use command_error::CommandError;
 use docent_forge::{AccountSummary, Accounts, GhCli, Section, SectionPulls};
+use docent_git::Git;
 use docent_store::{RepoId, Store, WatchedRepo};
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::OnceCell;
 
 /// Process-wide state. Tokens live only in `accounts`, in memory.
@@ -44,17 +47,27 @@ impl AppState {
         &self.accounts
     }
 
-    /// `gh` on the login shell's `PATH`. Only a `PATH` the shell actually
-    /// reported is kept; after a failure (say, a slow shell) the next
-    /// connect asks again.
+    /// `gh` on the login shell's `PATH`.
     async fn gh(&self) -> GhCli {
+        GhCli::new(self.child_path().await)
+    }
+
+    /// `git` on the login shell's `PATH`, with a scrubbed environment.
+    async fn git(&self) -> Git {
+        Git::new(self.child_path().await)
+    }
+
+    /// The login shell's `PATH`, for child processes. Only a `PATH` the
+    /// shell actually reported is kept; after a failure (say, a slow shell)
+    /// the next call asks again.
+    async fn child_path(&self) -> OsString {
         if let Some(path) = self.child_path.get() {
-            return GhCli::new(path.clone());
+            return path.clone();
         }
         let shell = std::env::var_os("SHELL").map_or_else(|| "/bin/zsh".into(), PathBuf::from);
         match shell_env::login_shell_path(&shell, Duration::from_secs(10)).await {
-            Some(path) => GhCli::new(self.child_path.get_or_init(|| async { path }).await.clone()),
-            None => GhCli::new(shell_env::fallback_path(std::env::var_os("PATH"))),
+            Some(path) => self.child_path.get_or_init(|| async { path }).await.clone(),
+            None => shell_env::fallback_path(std::env::var_os("PATH")),
         }
     }
 }
@@ -107,6 +120,37 @@ async fn unwatch_repo(id: RepoId, store: State<'_, Store>) -> Result<(), Command
     Ok(store.unwatch_repo(id).await?)
 }
 
+/// Asks for a folder with the native picker, then binds watched repo `id`
+/// to the clone in it. Returns `None` if the user cancels. The folder comes
+/// from the picker, never from the UI.
+#[tauri::command]
+async fn bind_repo(
+    id: RepoId,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<Option<WatchedRepo>, CommandError> {
+    let repo = store.watched_repo(id).await?;
+    let (picked, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(format!("Choose your clone of {}/{}", repo.owner, repo.name))
+        .pick_folder(move |folder| {
+            let _ = picked.send(folder);
+        });
+    // A dropped sender (the dialog closed without answering) is a cancel.
+    let Some(folder) = chosen.await.ok().flatten() else {
+        return Ok(None);
+    };
+    let folder = folder.into_path().map_err(|err| CommandError {
+        kind: "invalid_path",
+        message: err.to_string(),
+    })?;
+    bind::bind(&store, &state.git().await, &repo, &folder)
+        .await
+        .map(Some)
+}
+
 /// The open PRs in an inbox section (`review_requested`, `assigned`,
 /// `authored` or `mentioned`), in watched repos, from every connected host,
 /// newest first. Hosts that couldn't be asked are listed with their errors.
@@ -132,6 +176,7 @@ fn app_version() -> &'static str {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .setup(|app| {
             // Without its database the app has nothing to show, so a failure
@@ -150,6 +195,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            bind_repo,
             connect_host,
             list_accounts,
             list_section,

@@ -1,6 +1,7 @@
 //! The error type Tauri commands send to the UI.
 
 use docent_forge::{ConnectError, RepoError};
+use docent_git::GitError;
 use docent_store::StoreError;
 
 /// An error sent to the UI as `{ "kind": ..., "message": ... }`, like
@@ -31,6 +32,15 @@ impl From<StoreError> for CommandError {
 
 impl From<ConnectError> for CommandError {
     fn from(err: ConnectError) -> Self {
+        Self {
+            kind: err.kind(),
+            message: err.to_string(),
+        }
+    }
+}
+
+impl From<GitError> for CommandError {
+    fn from(err: GitError) -> Self {
         Self {
             kind: err.kind(),
             message: err.to_string(),
