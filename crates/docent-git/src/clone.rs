@@ -8,6 +8,9 @@ use crate::{Git, GitError};
 pub struct BoundClone {
     /// The clone's top-level folder.
     pub path: PathBuf,
+    /// The first remote that points at the repo, which PR heads are fetched
+    /// from.
+    pub remote: String,
 }
 
 impl Git {
@@ -48,7 +51,10 @@ impl Git {
                 .await?;
             for url in urls.lines() {
                 if RemoteRepo::parse(url).is_some_and(|r| r.is(host, owner, name)) {
-                    return Ok(BoundClone { path: top });
+                    return Ok(BoundClone {
+                        path: top,
+                        remote: remote.to_string(),
+                    });
                 }
                 found.push(without_credentials(url));
             }
