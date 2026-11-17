@@ -13,6 +13,8 @@ pub enum GitError {
         /// The clone's remote URLs, with any credentials removed.
         found: Vec<String>,
     },
+    #[error("Docent can't put a worktree at {0}: git needs a UTF-8 path. Report this as a bug.")]
+    InvalidPath(String),
     #[error("git failed: {0}")]
     Failed(String),
 }
@@ -35,6 +37,7 @@ impl GitError {
             Self::NotFound => "git_not_found",
             Self::NotARepo(_) => "not_a_repo",
             Self::NoMatchingRemote { .. } => "no_matching_remote",
+            Self::InvalidPath(_) => "invalid_path",
             Self::Failed(_) => "git_failed",
         }
     }
