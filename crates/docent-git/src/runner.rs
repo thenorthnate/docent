@@ -34,6 +34,9 @@ const ALLOWED: [&str; 7] = [
 /// Long enough for any local query; a hung git is killed.
 const TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Long enough for a fetch over a slow network.
+pub(crate) const NETWORK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 impl Git {
     /// `path` is the `PATH` to find `git` on, normally the login shell's.
     pub fn new(path: OsString) -> Self {
@@ -63,6 +66,16 @@ impl Git {
     /// Runs `git <args>` in `cwd` and returns its stdout. A failure is
     /// logged with git's stderr, and the stderr is returned in the error.
     pub(crate) async fn run(&self, cwd: &Path, args: &[&str]) -> Result<String, GitError> {
+        self.run_for(cwd, args, TIMEOUT).await
+    }
+
+    /// Like [`Git::run`], killing git after `timeout` instead.
+    pub(crate) async fn run_for(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<String, GitError> {
         let run = Command::new("git")
             .args(args)
             .current_dir(cwd)
@@ -71,7 +84,7 @@ impl Git {
             .stdin(Stdio::null())
             .kill_on_drop(true)
             .output();
-        let output = match tokio::time::timeout(TIMEOUT, run).await {
+        let output = match tokio::time::timeout(timeout, run).await {
             Err(_) => return Err(self.failed(cwd, args, "timed out")),
             Ok(Err(err)) if err.kind() == ErrorKind::NotFound => return Err(GitError::NotFound),
             Ok(Err(err)) => return Err(self.failed(cwd, args, &err.to_string())),
