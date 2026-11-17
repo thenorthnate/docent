@@ -141,3 +141,61 @@ async fn opening_a_pr_creates_a_detached_worktree_at_its_head() {
     assert!(!symbolic.success(), "the worktree is on a branch");
     assert_eq!(f.user_state(), before, "the user's clone changed");
 }
+
+#[tokio::test]
+async fn reopening_after_a_force_push_moves_the_worktree_and_keeps_the_old_head() {
+    let f = Fixture::new();
+    let first = f.commit("feature.txt", "first\n");
+    f.publish_pr(7, &first);
+    git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .await
+        .expect("opens");
+    // Rewrite history: the new head doesn't contain the old one.
+    sh_git(&f.work, &["reset", "--quiet", "--hard", "HEAD~1"]);
+    let rewritten = f.commit("feature.txt", "rewritten\n");
+    f.publish_pr(7, &rewritten);
+    let before = f.user_state();
+
+    let reopened = git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .await
+        .expect("reopens");
+
+    assert_eq!(reopened.head_sha, rewritten);
+    assert_eq!(reopened.path, f.worktree(7));
+    assert_eq!(sh_git(&reopened.path, &["rev-parse", "HEAD"]), rewritten);
+    assert_eq!(
+        std::fs::read_to_string(reopened.path.join("feature.txt")).unwrap(),
+        "rewritten\n"
+    );
+    // The old head is still reachable from a ref, so gc keeps it for
+    // interdiffs.
+    let pinning = sh_git(
+        &f.clone,
+        &["for-each-ref", "--contains", &first, "--format=%(refname)", "refs/docent"],
+    );
+    assert!(!pinning.is_empty(), "no refs/docent ref keeps {first}");
+    assert_eq!(f.user_state(), before, "the user's clone changed");
+}
+
+#[tokio::test]
+async fn reopening_an_unchanged_pr_reuses_its_worktree() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    let dest = f.worktree(7);
+    git.open_pr_worktree(&f.clone, "origin", 7, &dest)
+        .await
+        .expect("opens");
+
+    let reopened = git
+        .open_pr_worktree(&f.clone, "origin", 7, &dest)
+        .await
+        .expect("reopens");
+
+    assert_eq!(reopened.head_sha, head);
+    let worktrees = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
+    assert_eq!(worktrees.matches("worktree ").count(), 2, "{worktrees}");
+}
