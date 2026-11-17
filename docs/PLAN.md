@@ -304,7 +304,7 @@ Fork PRs always need **Trust this PR**, even in a trusted repo, and that resets 
 - **All agents**: forge tokens stripped from the environment at spawn; Docent denies any permission request outside the policy.
 - **MCP tools**: denied unless on the profile's allowlist, including any new tools a server adds later. Lens sessions get Jira **read** tools only (get, search), so injected content can't write to Jira.
 - A full OS sandbox around the agent process is decided at M8, before public release.
-- **Content Security Policy**: the scaffold ships with the generator's `csp: null`. Forge content (PR bodies, comments) and agent output are hostile, so a real CSP lands with the first M1 slice that renders them as markdown, and they are never rendered as raw HTML.
+- **Content Security Policy**: forge content (PR bodies, comments) and agent output are hostile, so they're rendered as Markdown with raw HTML escaped, never as raw HTML, and the CSP lets only the app's own bundled scripts run. It replaced the generator's `csp: null` in the Overview tab slice (#21); `OPEN-QUESTIONS.md` has the directives.
 
 **Permission modes** (per agent profile):
 

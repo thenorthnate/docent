@@ -178,6 +178,16 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | Size buckets | XS < 10, S < 100, M < 500, L ≥ 500 lines added plus deleted. Files changed are in the size tooltip |
 | Tooltips | shadcn-vue Tooltip, for the row's CI icon and size and for the activity bar, which drops native `title` |
 
+### Added while building the Overview tab (#21)
+
+| Topic | Decision |
+|---|---|
+| Content Security Policy | `script-src 'self'` only: no inline script, eval or remote host. Tauri adds hashes for its own scripts. `style-src` allows `'unsafe-inline'` (Tauri's style nonces are switched off so it takes effect), since styles can't run code. `object-src`, `frame-src`, `base-uri` and `form-action` are `'none'`. A test in `src-tauri` fails if `script-src` loosens |
+| Images in PR Markdown | Shown when served over https (`img-src 'self' data: https:`), as on GitHub. The trade-off: opening a PR fetches from hosts its author chose, which tells them when you looked |
+| Links in PR Markdown | Don't navigate: a click would take the app window away from Docent. The URL shows on hover. Opening links in the system browser is a follow-up |
+| Markdown rendering | `markdown-it` with `html: false`: raw HTML shows as text. It is the only path from forge content to `v-html` |
+| Timeline and checks | The first 100 of each, from one GraphQL query. A longer timeline says it was cut short |
+
 ### Added while designing the review lifecycle
 
 GitHub's `review-requested:@me` drops a PR once you review it, and team requests vanish when a teammate picks them up, so PRs disappeared from the inbox while still needing you. See the review lifecycle in `PLAN.md` 5.2.
