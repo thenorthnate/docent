@@ -116,6 +116,8 @@ impl Fixture {
     }
 }
 
+/// The head is on no forge branch, only `refs/pull/7/head`: how GitHub
+/// shows a fork PR in the base repo.
 #[tokio::test]
 async fn opening_a_pr_creates_a_detached_worktree_at_its_head() {
     let f = Fixture::new();

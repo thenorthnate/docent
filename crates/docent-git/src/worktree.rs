@@ -78,6 +78,8 @@ impl Git {
             .to_str()
             .ok_or_else(|| GitError::Failed(format!("{} isn't valid UTF-8", dest.display())))?;
         if self.is_worktree_of(clone, dest).await? {
+            // The worktree is Docent's and read-only, so `--force` throws away
+            // anything written there rather than refusing to move.
             self.run_hardened(
                 dest,
                 &["checkout", "--quiet", "--detach", "--force", &sha],
@@ -101,9 +103,7 @@ impl Git {
             head_sha: sha,
         })
     }
-}
 
-impl Git {
     /// Runs `git <args>` with [`NO_REPO_COMMANDS`] in front.
     async fn run_hardened(
         &self,
