@@ -2,6 +2,7 @@ mod bind;
 mod command_error;
 mod inbox;
 mod remember;
+mod review;
 mod shell_env;
 mod watch;
 
@@ -10,7 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use command_error::CommandError;
-use docent_forge::{AccountSummary, Accounts, GhCli, Section, SectionPulls};
+use docent_forge::{AccountSummary, Accounts, GhCli, PullOverview, Section, SectionPulls};
 use docent_git::Git;
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{AppHandle, Manager, State};
@@ -163,6 +164,21 @@ async fn list_section(
     inbox::section_pulls(state.accounts(&store).await, &store, section).await
 }
 
+/// The description, checks and timeline of PR `number` in `owner/repo` on
+/// `host`, for the review page's Overview tab. Watched repos only.
+#[tauri::command]
+async fn pull_overview(
+    host: String,
+    owner: String,
+    repo: String,
+    number: u64,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<PullOverview, CommandError> {
+    let accounts = state.accounts(&store).await;
+    review::pull_overview(accounts, &store, &host, &owner, &repo, number).await
+}
+
 /// The app version, shown in the UI so a bug report can name it.
 ///
 /// `env!` reads `CARGO_PKG_VERSION` at compile time. Cargo sets it from the
@@ -200,6 +216,7 @@ pub fn run() {
             list_accounts,
             list_section,
             list_watched_repos,
+            pull_overview,
             unwatch_repo,
             watch_repo
         ])
