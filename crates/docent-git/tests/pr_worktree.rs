@@ -52,7 +52,10 @@ impl Fixture {
         let work = base.join("work");
         let clone = base.join("clone");
         let data = base.join("data");
-        sh_git(&base, &["init", "--quiet", "--bare", "-b", "main", "forge.git"]);
+        sh_git(
+            &base,
+            &["init", "--quiet", "--bare", "-b", "main", "forge.git"],
+        );
         sh_git(&base, &["init", "--quiet", "-b", "main", "work"]);
         sh_git(&work, &["remote", "add", "origin", forge.to_str().unwrap()]);
         let fixture = Self {
@@ -173,7 +176,13 @@ async fn reopening_after_a_force_push_moves_the_worktree_and_keeps_the_old_head(
     // interdiffs.
     let pinning = sh_git(
         &f.clone,
-        &["for-each-ref", "--contains", &first, "--format=%(refname)", "refs/docent"],
+        &[
+            "for-each-ref",
+            "--contains",
+            &first,
+            "--format=%(refname)",
+            "refs/docent",
+        ],
     );
     assert!(!pinning.is_empty(), "no refs/docent ref keeps {first}");
     assert_eq!(f.user_state(), before, "the user's clone changed");
@@ -198,4 +207,66 @@ async fn reopening_an_unchanged_pr_reuses_its_worktree() {
     assert_eq!(reopened.head_sha, head);
     let worktrees = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
     assert_eq!(worktrees.matches("worktree ").count(), 2, "{worktrees}");
+}
+
+#[tokio::test]
+async fn a_deleted_worktree_folder_is_recreated() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    let dest = f.worktree(7);
+    git.open_pr_worktree(&f.clone, "origin", 7, &dest)
+        .await
+        .expect("opens");
+    std::fs::remove_dir_all(&dest).expect("delete the worktree folder");
+
+    let reopened = git
+        .open_pr_worktree(&f.clone, "origin", 7, &dest)
+        .await
+        .expect("reopens");
+
+    assert_eq!(sh_git(&reopened.path, &["rev-parse", "HEAD"]), head);
+}
+
+/// PR content is hostile and the clone's config isn't Docent's: opening a PR
+/// must not run any hook or fsmonitor the clone names.
+#[cfg(unix)]
+#[tokio::test]
+async fn opening_a_pr_runs_none_of_the_clones_configured_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new();
+    let marker = f.data.parent().unwrap().join("PWNED");
+    let script = f.clone.join(".git/evil.sh");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .expect("write script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    for hook in ["post-checkout", "reference-transaction", "pre-auto-gc"] {
+        let path = f.clone.join(".git/hooks").join(hook);
+        std::fs::copy(&script, &path).expect("install hook");
+    }
+    sh_git(
+        &f.clone,
+        &["config", "core.fsmonitor", script.to_str().unwrap()],
+    );
+    sh_git(&f.clone, &["config", "gc.auto", "1"]);
+    let first = f.commit("feature.txt", "first\n");
+    f.publish_pr(7, &first);
+    let git = git();
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .await
+        .expect("opens");
+    // The re-open path checks out inside the worktree.
+    let second = f.commit("more.txt", "more\n");
+    f.publish_pr(7, &second);
+
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .await
+        .expect("reopens");
+
+    assert!(!marker.exists(), "a clone-configured command ran");
 }

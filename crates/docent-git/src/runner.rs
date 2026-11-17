@@ -32,7 +32,7 @@ const ALLOWED: [&str; 7] = [
 ];
 
 /// Long enough for any local query; a hung git is killed.
-const TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Long enough for a fetch over a slow network.
 pub(crate) const NETWORK_TIMEOUT: Duration = Duration::from_secs(10 * 60);

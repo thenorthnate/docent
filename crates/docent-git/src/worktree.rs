@@ -2,9 +2,26 @@
 //! checked out in detached HEAD in a folder Docent owns.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use crate::runner::NETWORK_TIMEOUT;
+use crate::runner::{NETWORK_TIMEOUT, TIMEOUT};
 use crate::{Git, GitError};
+
+/// Config for every git call here. The clone's own config may name hooks,
+/// an fsmonitor or submodules, and PR content is hostile, so none of them
+/// may run: opening a PR runs only git itself.
+const NO_REPO_COMMANDS: [&str; 10] = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "gc.auto=0",
+    "-c",
+    "maintenance.auto=false",
+    "-c",
+    "submodule.recurse=false",
+];
 
 /// A PR's worktree, checked out at its head.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,34 +42,54 @@ impl Git {
     ) -> Result<PrWorktree, GitError> {
         let head_ref = format!("refs/docent/{remote}/pull/{number}/head");
         let refspec = format!("+refs/pull/{number}/head:{head_ref}");
-        self.run_for(
+        self.run_hardened(
             clone,
-            &["fetch", "--no-tags", "--no-write-fetch-head", remote, &refspec],
+            &[
+                "fetch",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "--no-recurse-submodules",
+                "--end-of-options",
+                remote,
+                &refspec,
+            ],
             NETWORK_TIMEOUT,
         )
         .await?;
         let sha = self
-            .run(clone, &["rev-parse", "--verify", &format!("{head_ref}^{{commit}}")])
+            .run_hardened(
+                clone,
+                &["rev-parse", "--verify", &format!("{head_ref}^{{commit}}")],
+                TIMEOUT,
+            )
             .await?
             .trim()
             .to_string();
         // Pin this head under its own name, so it stays reachable for
         // interdiffs after the PR is force-pushed.
         let pin = format!("refs/docent/{remote}/pull/{number}/{sha}");
-        self.run(clone, &["update-ref", &pin, &sha]).await?;
+        self.run_hardened(clone, &["update-ref", &pin, &sha], TIMEOUT)
+            .await?;
 
-        let dest_str = dest.to_str().ok_or_else(|| {
-            GitError::Failed(format!("{} isn't valid UTF-8", dest.display()))
-        })?;
+        let dest_str = dest
+            .to_str()
+            .ok_or_else(|| GitError::Failed(format!("{} isn't valid UTF-8", dest.display())))?;
         if self.is_worktree_of(clone, dest).await? {
-            self.run(dest, &["checkout", "--quiet", "--detach", "--force", &sha])
-                .await?;
+            self.run_hardened(
+                dest,
+                &["checkout", "--quiet", "--detach", "--force", &sha],
+                TIMEOUT,
+            )
+            .await?;
         } else {
             // `--force` re-adds a worktree whose folder was deleted but whose
             // registration remains.
-            self.run(
+            self.run_hardened(
                 clone,
-                &["worktree", "add", "--quiet", "--force", "--detach", dest_str, &sha],
+                &[
+                    "worktree", "add", "--quiet", "--force", "--detach", dest_str, &sha,
+                ],
+                TIMEOUT,
             )
             .await?;
         }
@@ -64,13 +101,24 @@ impl Git {
 }
 
 impl Git {
+    /// Runs `git <args>` with [`NO_REPO_COMMANDS`] in front.
+    async fn run_hardened(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<String, GitError> {
+        let all: Vec<&str> = NO_REPO_COMMANDS.iter().chain(args).copied().collect();
+        self.run_for(cwd, &all, timeout).await
+    }
+
     /// Whether `dest` is an existing worktree folder of `clone`.
     async fn is_worktree_of(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
         let Ok(dest) = dest.canonicalize() else {
             return Ok(false);
         };
         let list = self
-            .run(clone, &["worktree", "list", "--porcelain"])
+            .run_hardened(clone, &["worktree", "list", "--porcelain"], TIMEOUT)
             .await?;
         Ok(list
             .lines()
