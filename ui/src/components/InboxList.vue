@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, watch, type Component } from "vue";
-import { CircleCheck, CircleDashed, CircleX, Clock } from "@lucide/vue";
+import { computed, nextTick, onMounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@/components/ui/button";
 import { formatAge } from "@/lib/age";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CI_LABELS, REVIEW_LABELS, pullKey, sizeBreakdown, sizeLabel } from "@/lib/pull";
+import { CI_ICONS, CI_LABELS, REVIEW_LABELS, pullKey, sizeBreakdown, sizeLabel } from "@/lib/pull";
 import { SECTION_EMPTY, SECTION_LABELS } from "@/lib/sections";
-import { useInboxStore, type CiStatus, type PullSummary, type ReviewState } from "@/stores/inbox";
+import { useInboxStore, type PullSummary, type ReviewState } from "@/stores/inbox";
 
 /** The selected PR's key, from `pullKey`; `null` when none is. */
 const selectedPull = defineModel<string | null>("selectedPull", { default: null });
@@ -19,14 +18,6 @@ const pulls = computed(() => selectedSection.value.pulls);
 const failures = computed(() => selectedSection.value.failures);
 const incomplete = computed(() => selectedSection.value.incomplete);
 const error = computed(() => selectedSection.value.error);
-
-/** Each CI status's icon and colour. */
-const CI_ICONS: Record<CiStatus, { icon: Component; tone: string }> = {
-  passing: { icon: CircleCheck, tone: "text-emerald-600 dark:text-emerald-400" },
-  failing: { icon: CircleX, tone: "text-destructive" },
-  pending: { icon: Clock, tone: "text-amber-600 dark:text-amber-400" },
-  no_checks: { icon: CircleDashed, tone: "text-muted-foreground" },
-};
 
 /** Each review state's chip colour. */
 const REVIEW_TONES: Record<ReviewState, string> = {

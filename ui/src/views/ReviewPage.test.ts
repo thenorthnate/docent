@@ -1,28 +1,91 @@
-import { describe, expect, it } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createMemoryHistory } from "vue-router";
 import ReviewPage from "./ReviewPage.vue";
 import { createAppRouter } from "@/router";
+import type { PullOverview } from "@/lib/review";
 
-async function mountPage(path: string) {
+const PR_PATH = "/review/github.com/octocat/Hello-World/1347";
+
+function overview(overrides: Partial<PullOverview> = {}): PullOverview {
+  return {
+    title: "Fix the greeting",
+    author: "mona",
+    body: "Say hello **properly**.",
+    ci: "failing",
+    checks: [
+      { name: "build", state: "passing" },
+      { name: "test", state: "failing" },
+    ],
+    timeline: [
+      {
+        kind: "commit",
+        sha: "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+        headline: "Say hello properly",
+        author: "mona",
+        at: "2026-11-10T09:00:00Z",
+      },
+      { kind: "comment", author: "hubot", body: "Looks _close_.", at: "2026-11-11T08:00:00Z" },
+      {
+        kind: "review",
+        author: "octocat",
+        verdict: "changes_requested",
+        body: "Please add a test.",
+        at: "2026-11-11T09:00:00Z",
+      },
+    ],
+    timeline_truncated: false,
+    ...overrides,
+  };
+}
+
+/** The review page at `path`, over a fake core whose `pull_overview` runs `answer`. */
+async function mountPage(path: string, answer: (args: unknown) => unknown = () => overview()) {
+  const asked: unknown[] = [];
+  mockIPC((cmd, args) => {
+    if (cmd !== "pull_overview") throw new Error(`unexpected command: ${cmd}`);
+    asked.push(args);
+    return answer(args);
+  });
   const router = createAppRouter(createMemoryHistory());
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(ReviewPage, { global: { plugins: [router] } });
-  return { wrapper, router };
+  const wrapper = mount(ReviewPage, { global: { plugins: [router] }, attachTo: document.body });
+  await flushPromises();
+  return { wrapper, router, asked };
 }
 
+type Page = Awaited<ReturnType<typeof mountPage>>["wrapper"];
+
+function section(wrapper: Page, name: string) {
+  return wrapper.get(`section[aria-label="${name}"]`);
+}
+
+enableAutoUnmount(afterEach);
+afterEach(() => clearMocks());
+
 describe("ReviewPage", () => {
-  it("shows the opened PR's breadcrumb", async () => {
-    const { wrapper } = await mountPage("/review/github.com/octocat/Hello-World/1347");
+  it("asks the core for the opened PR's overview", async () => {
+    const { asked } = await mountPage(PR_PATH);
+
+    expect(asked).toEqual([{ host: "github.com", owner: "octocat", repo: "Hello-World", number: 1347 }]);
+  });
+
+  it("names the PR in the breadcrumb and shows its CI status in the top bar", async () => {
+    const { wrapper } = await mountPage(PR_PATH);
 
     const crumbs = wrapper.get("nav[aria-label=Breadcrumb]");
-    expect(crumbs.findAll("li").map((c) => c.text())).toEqual(["Inbox", "octocat/Hello-World", "#1347"]);
-    expect(crumbs.get("[aria-current=page]").text()).toBe("#1347");
+    expect(crumbs.findAll("li").map((c) => c.text())).toEqual([
+      "Inbox",
+      "octocat/Hello-World",
+      "Fix the greeting #1347",
+    ]);
+    expect(wrapper.get("[data-testid=ci-status]").text()).toBe("Checks failing");
   });
 
   it("leads back to the inbox from the breadcrumb", async () => {
-    const { wrapper, router } = await mountPage("/review/github.com/octocat/Hello-World/1347");
+    const { wrapper, router } = await mountPage(PR_PATH);
 
     await wrapper.get("nav[aria-label=Breadcrumb] a").trigger("click");
     await flushPromises();
@@ -30,10 +93,83 @@ describe("ReviewPage", () => {
     expect(router.currentRoute.value.path).toBe("/inbox");
   });
 
+  it("shows the description as rendered Markdown on the Overview tab", async () => {
+    const { wrapper } = await mountPage(PR_PATH);
+
+    expect(wrapper.get("[role=tab][aria-selected=true]").text()).toBe("Overview");
+    expect(section(wrapper, "Description").get("strong").text()).toBe("properly");
+  });
+
+  it("never runs a script from the description", async () => {
+    const body = '<script>window.pwned = true</script>\n\n<img src=x onerror="window.pwned = true">';
+    const { wrapper } = await mountPage(PR_PATH, () => overview({ body }));
+
+    const description = section(wrapper, "Description");
+    expect(description.find("script, img").exists()).toBe(false);
+    expect(description.text()).toContain("<script>window.pwned = true</script>");
+    expect((window as { pwned?: boolean }).pwned).toBeUndefined();
+  });
+
+  it("keeps link clicks from navigating the app window", async () => {
+    const { wrapper } = await mountPage(PR_PATH, () => overview({ body: "[docs](https://docs.test/a)" }));
+
+    const link = section(wrapper, "Description").get("a");
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    link.element.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    expect(link.attributes("title")).toBe("https://docs.test/a");
+  });
+
+  it("says when there is no description or no checks", async () => {
+    const { wrapper } = await mountPage(PR_PATH, () => overview({ body: null, checks: [] }));
+
+    expect(section(wrapper, "Description").text()).toBe("No description provided.");
+    expect(section(wrapper, "Checks").text()).toContain("No checks on the latest commit.");
+  });
+
+  it("lists each check with its state", async () => {
+    const { wrapper } = await mountPage(PR_PATH);
+
+    const rows = section(wrapper, "Checks").findAll("li");
+    expect(rows.map((r) => r.findAll("span").map((cell) => cell.text()))).toEqual([
+      ["build", "Passed"],
+      ["test", "Failed"],
+    ]);
+  });
+
+  it("lists commits, comments and reviews in order", async () => {
+    const { wrapper } = await mountPage(PR_PATH);
+
+    const items = section(wrapper, "Timeline").findAll("li");
+    expect(items).toHaveLength(3);
+    expect(items[0].text()).toContain("mona committed 6dcb09b Say hello properly");
+    expect(items[1].text()).toContain("hubot commented");
+    expect(items[1].get("em").text()).toBe("close");
+    expect(items[2].text()).toContain("octocat requested changes");
+    expect(items[2].text()).toContain("Please add a test.");
+  });
+
+  it("says when the timeline was cut short", async () => {
+    const { wrapper } = await mountPage(PR_PATH, () => overview({ timeline_truncated: true }));
+
+    expect(section(wrapper, "Timeline").text()).toContain("Showing the first 100 events.");
+  });
+
+  it("shows why the overview couldn't load", async () => {
+    const { wrapper } = await mountPage(PR_PATH, () => {
+      throw { kind: "not_watched", message: "octocat/Hello-World on github.com isn't watched." };
+    });
+
+    expect(wrapper.get("[role=alert]").text()).toBe("octocat/Hello-World on github.com isn't watched.");
+    expect(wrapper.get("nav[aria-label=Breadcrumb] [aria-current=page]").text()).toBe("#1347");
+  });
+
   it("asks for a PR when none is open", async () => {
-    const { wrapper } = await mountPage("/review");
+    const { wrapper, asked } = await mountPage("/review");
 
     expect(wrapper.find("nav[aria-label=Breadcrumb]").exists()).toBe(false);
     expect(wrapper.text()).toContain("Open a pull request from the Inbox");
+    expect(asked).toEqual([]);
   });
 });
