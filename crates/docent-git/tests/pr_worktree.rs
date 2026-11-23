@@ -405,11 +405,20 @@ async fn removing_refuses_any_path_outside_the_worktrees_folder() {
     let mine = f.data.parent().unwrap().join("mine");
     sh_git(
         &f.clone,
-        &["worktree", "add", "--quiet", "-b", "mine", mine.to_str().unwrap()],
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "mine",
+            mine.to_str().unwrap(),
+        ],
     );
     std::fs::write(mine.join("work.txt"), "unsaved\n").expect("edit");
     std::fs::create_dir_all(&f.data).expect("data dir");
     std::os::unix::fs::symlink(&mine, f.data.join("pr-8")).expect("symlink");
+    let base = f.data.parent().unwrap();
+    std::os::unix::fs::symlink(base, f.data.join("up")).expect("symlink");
     let before = f.user_state();
     let listed_before = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
 
@@ -417,6 +426,7 @@ async fn removing_refuses_any_path_outside_the_worktrees_folder() {
         mine.clone(),
         f.data.join("..").join("mine"),
         f.data.join("pr-8"),
+        f.data.join("up").join("mine"),
         f.data.clone(),
     ] {
         let err = git

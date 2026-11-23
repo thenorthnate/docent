@@ -1,7 +1,7 @@
 //! PR worktrees (PLAN §5.7): a PR's head, fetched into `refs/docent/*` and
 //! checked out in detached HEAD in a folder Docent owns.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use crate::runner::{NETWORK_TIMEOUT, TIMEOUT};
@@ -110,9 +110,10 @@ impl Git {
         clone: &Path,
         remote: &str,
         number: u64,
-        _root: &Path,
+        root: &Path,
         dest: &Path,
     ) -> Result<(), GitError> {
+        check_inside(root, dest)?;
         let dest_str = utf8(dest)?;
         if self.lists(clone, dest).await? {
             // `--force`: the worktree is Docent's, so anything written there
@@ -182,4 +183,29 @@ fn resolve(path: &Path) -> Option<PathBuf> {
         return Some(path);
     }
     Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?))
+}
+
+/// Refuses a `dest` that isn't strictly inside `root`, so nothing outside
+/// Docent's worktrees folder is ever removed: not by a `..`, not through a
+/// symlink, and not `root` itself.
+fn check_inside(root: &Path, dest: &Path) -> Result<(), GitError> {
+    let refuse = || Err(GitError::OutsideWorktrees(dest.display().to_string()));
+    let lexically_inside = dest.starts_with(root)
+        && dest != root
+        && !dest.components().any(|c| c == Component::ParentDir);
+    let is_symlink = dest
+        .symlink_metadata()
+        .is_ok_and(|meta| meta.file_type().is_symlink());
+    if !lexically_inside || is_symlink {
+        return refuse();
+    }
+    // A symlinked folder on the way may still lead outside. A `dest` that
+    // doesn't resolve has no folder to remove.
+    if let Some(resolved) = resolve(dest) {
+        match resolve(root) {
+            Some(root) if resolved.starts_with(&root) && resolved != root => {}
+            _ => return refuse(),
+        }
+    }
+    Ok(())
 }
