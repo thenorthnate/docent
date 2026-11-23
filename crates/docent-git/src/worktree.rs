@@ -1,5 +1,6 @@
 //! PR worktrees (PLAN §5.7): a PR's head, fetched into `refs/docent/*` and
-//! checked out in detached HEAD in a folder Docent owns.
+//! checked out in detached HEAD in a folder Docent owns, and removed
+//! again along with its pins.
 
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;

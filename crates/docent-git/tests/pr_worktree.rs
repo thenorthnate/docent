@@ -1,5 +1,6 @@
-//! `Git::open_pr_worktree` against temp repos: a bare repo stands in for
-//! the forge, and a clone of it for the user's clone.
+//! `Git::open_pr_worktree` and `Git::remove_pr_worktree` against temp
+//! repos: a bare repo stands in for the forge, and a clone of it for the
+//! user's clone.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
