@@ -42,6 +42,8 @@ impl Git {
         root: &Path,
         dest: &Path,
     ) -> Result<PrWorktree, GitError> {
+        check_inside(root, dest)?;
+        let dest_str = utf8(dest)?;
         let head_ref = format!("refs/docent/{remote}/pull/{number}/head");
         let refspec = format!("+refs/pull/{number}/head:{head_ref}");
         self.run_hardened(
@@ -76,7 +78,6 @@ impl Git {
         self.run_hardened(clone, &["update-ref", &pin, &sha], TIMEOUT)
             .await?;
 
-        let dest_str = utf8(dest)?;
         if self.is_worktree_of(clone, dest).await? {
             // The worktree is Docent's and read-only, so `--force` throws away
             // anything written there rather than refusing to move.
