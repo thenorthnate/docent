@@ -32,12 +32,13 @@ pub struct PrWorktree {
 
 impl Git {
     /// Fetches PR `number`'s head from `remote` of `clone` and checks it out
-    /// in detached HEAD at `dest`.
+    /// in detached HEAD at `dest`, inside `root`, Docent's worktrees folder.
     pub async fn open_pr_worktree(
         &self,
         clone: &Path,
         remote: &str,
         number: u64,
+        _root: &Path,
         dest: &Path,
     ) -> Result<PrWorktree, GitError> {
         let head_ref = format!("refs/docent/{remote}/pull/{number}/head");
@@ -102,6 +103,19 @@ impl Git {
             path: dest.to_path_buf(),
             head_sha: sha,
         })
+    }
+
+    /// Removes PR `number`'s worktree at `dest`, inside `root`, and its
+    /// `refs/docent/<remote>/pull/<number>/*` pins.
+    pub async fn remove_pr_worktree(
+        &self,
+        _clone: &Path,
+        _remote: &str,
+        _number: u64,
+        _root: &Path,
+        _dest: &Path,
+    ) -> Result<(), GitError> {
+        Ok(())
     }
 
     /// Runs `git <args>` with [`NO_REPO_COMMANDS`] in front.

@@ -126,7 +126,7 @@ async fn opening_a_pr_creates_a_detached_worktree_at_its_head() {
     let before = f.user_state();
 
     let opened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("opens");
 
@@ -153,7 +153,7 @@ async fn reopening_after_a_force_push_moves_the_worktree_and_keeps_the_old_head(
     let first = f.commit("feature.txt", "first\n");
     f.publish_pr(7, &first);
     git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("opens");
     // Rewrite history: the new head doesn't contain the old one.
@@ -163,7 +163,7 @@ async fn reopening_after_a_force_push_moves_the_worktree_and_keeps_the_old_head(
     let before = f.user_state();
 
     let reopened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("reopens");
 
@@ -197,12 +197,12 @@ async fn reopening_an_unchanged_pr_reuses_its_worktree() {
     f.publish_pr(7, &head);
     let git = git();
     let dest = f.worktree(7);
-    git.open_pr_worktree(&f.clone, "origin", 7, &dest)
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
         .await
         .expect("opens");
 
     let reopened = git
-        .open_pr_worktree(&f.clone, "origin", 7, &dest)
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
         .await
         .expect("reopens");
 
@@ -218,13 +218,13 @@ async fn a_deleted_worktree_folder_is_recreated() {
     f.publish_pr(7, &head);
     let git = git();
     let dest = f.worktree(7);
-    git.open_pr_worktree(&f.clone, "origin", 7, &dest)
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
         .await
         .expect("opens");
     std::fs::remove_dir_all(&dest).expect("delete the worktree folder");
 
     let reopened = git
-        .open_pr_worktree(&f.clone, "origin", 7, &dest)
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
         .await
         .expect("reopens");
 
@@ -259,14 +259,14 @@ async fn opening_a_pr_runs_none_of_the_clones_configured_commands() {
     let first = f.commit("feature.txt", "first\n");
     f.publish_pr(7, &first);
     let git = git();
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("opens");
     // The re-open path checks out inside the worktree.
     let second = f.commit("more.txt", "more\n");
     f.publish_pr(7, &second);
 
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("reopens");
 
@@ -292,7 +292,7 @@ async fn a_configured_pull_refspec_does_not_touch_the_users_refs() {
     let before = f.user_state();
 
     git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("opens");
 
@@ -316,7 +316,7 @@ async fn a_pr_head_already_checked_out_on_a_user_branch_still_opens() {
     let before = f.user_state();
 
     let opened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
         .await
         .expect("opens");
 
@@ -326,4 +326,41 @@ async fn a_pr_head_already_checked_out_on_a_user_branch_still_opens() {
         std::fs::read_to_string(f.clone.join("feature.txt")).unwrap(),
         "my edit\n"
     );
+}
+
+/// The `refs/docent` refs in `clone`, one per line.
+fn docent_refs(clone: &Path) -> String {
+    sh_git(clone, &["for-each-ref", "--format=%(refname)", "refs/docent"])
+}
+
+/// PR 7's removal must leave PR 70 alone: `pull/7` is a prefix of `pull/70`.
+#[tokio::test]
+async fn removing_a_pr_worktree_deletes_its_folder_registration_and_pins() {
+    let f = Fixture::new();
+    let git = git();
+    let seven = f.commit("seven.txt", "7\n");
+    f.publish_pr(7, &seven);
+    let seventy = f.commit("seventy.txt", "70\n");
+    f.publish_pr(70, &seventy);
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("opens 7");
+    git.open_pr_worktree(&f.clone, "origin", 70, &f.data, &f.worktree(70))
+        .await
+        .expect("opens 70");
+    let before = f.user_state();
+
+    git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists(), "the folder is still there");
+    let listed = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("pr-7\n"), "still registered: {listed}");
+    assert!(listed.contains("pr-70\n"), "PR 70's worktree went: {listed}");
+    assert_eq!(
+        docent_refs(&f.clone),
+        format!("refs/docent/origin/pull/70/{seventy}\nrefs/docent/origin/pull/70/head")
+    );
+    assert_eq!(f.user_state(), before, "the user's clone changed");
 }

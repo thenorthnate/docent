@@ -40,7 +40,7 @@ pub async fn open(
         .join(repo.id.to_string())
         .join(format!("pr-{number}"));
     let opened = git
-        .open_pr_worktree(&clone.path, &clone.remote, number, &dest)
+        .open_pr_worktree(&clone.path, &clone.remote, number, worktrees, &dest)
         .await?;
     Ok(OpenedPr::Ready {
         path: opened.path.display().to_string(),
