@@ -75,9 +75,7 @@ impl Git {
         self.run_hardened(clone, &["update-ref", &pin, &sha], TIMEOUT)
             .await?;
 
-        let dest_str = dest
-            .to_str()
-            .ok_or_else(|| GitError::Failed(format!("{} isn't valid UTF-8", dest.display())))?;
+        let dest_str = utf8(dest)?;
         if self.is_worktree_of(clone, dest).await? {
             // The worktree is Docent's and read-only, so `--force` throws away
             // anything written there rather than refusing to move.
@@ -109,12 +107,33 @@ impl Git {
     /// `refs/docent/<remote>/pull/<number>/*` pins.
     pub async fn remove_pr_worktree(
         &self,
-        _clone: &Path,
-        _remote: &str,
-        _number: u64,
+        clone: &Path,
+        remote: &str,
+        number: u64,
         _root: &Path,
-        _dest: &Path,
+        dest: &Path,
     ) -> Result<(), GitError> {
+        let dest_str = utf8(dest)?;
+        if self.is_worktree_of(clone, dest).await? {
+            // `--force`: the worktree is Docent's, so anything written there
+            // goes with it.
+            self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
+                .await?;
+        }
+        // The trailing slash matches whole path components, so PR 7's pins
+        // never include PR 70's.
+        let pins = format!("refs/docent/{remote}/pull/{number}/");
+        let refs = self
+            .run_hardened(
+                clone,
+                &["for-each-ref", "--format=%(refname)", &pins],
+                TIMEOUT,
+            )
+            .await?;
+        for name in refs.lines() {
+            self.run_hardened(clone, &["update-ref", "-d", name], TIMEOUT)
+                .await?;
+        }
         Ok(())
     }
 
@@ -142,4 +161,10 @@ impl Git {
             .filter_map(|line| line.strip_prefix("worktree "))
             .any(|path| Path::new(path).canonicalize().is_ok_and(|p| p == dest)))
     }
+}
+
+/// `path` as a `&str`, since git's arguments here must be UTF-8.
+fn utf8(path: &Path) -> Result<&str, GitError> {
+    path.to_str()
+        .ok_or_else(|| GitError::InvalidPath(path.display().to_string()))
 }
