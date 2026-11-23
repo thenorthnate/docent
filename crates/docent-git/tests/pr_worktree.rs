@@ -394,3 +394,46 @@ async fn removing_a_worktree_whose_folder_is_gone_drops_its_registration() {
     assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
     assert_eq!(docent_refs(&f.clone), "");
 }
+
+/// Removal deletes folders, so it only ever acts inside Docent's worktrees
+/// folder: never the user's own worktree, however the path reaches it.
+#[cfg(unix)]
+#[tokio::test]
+async fn removing_refuses_any_path_outside_the_worktrees_folder() {
+    let f = Fixture::new();
+    let git = git();
+    let mine = f.data.parent().unwrap().join("mine");
+    sh_git(
+        &f.clone,
+        &["worktree", "add", "--quiet", "-b", "mine", mine.to_str().unwrap()],
+    );
+    std::fs::write(mine.join("work.txt"), "unsaved\n").expect("edit");
+    std::fs::create_dir_all(&f.data).expect("data dir");
+    std::os::unix::fs::symlink(&mine, f.data.join("pr-8")).expect("symlink");
+    let before = f.user_state();
+    let listed_before = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
+
+    for dest in [
+        mine.clone(),
+        f.data.join("..").join("mine"),
+        f.data.join("pr-8"),
+        f.data.clone(),
+    ] {
+        let err = git
+            .remove_pr_worktree(&f.clone, "origin", 8, &f.data, &dest)
+            .await
+            .expect_err(&format!("removed {}", dest.display()));
+        assert_eq!(err.kind(), "outside_worktrees", "{dest:?}: {err}");
+    }
+
+    assert_eq!(
+        std::fs::read_to_string(mine.join("work.txt")).unwrap(),
+        "unsaved\n"
+    );
+    assert_eq!(
+        sh_git(&f.clone, &["worktree", "list", "--porcelain"]),
+        listed_before
+    );
+    assert!(f.data.join("pr-8").symlink_metadata().is_ok());
+    assert_eq!(f.user_state(), before, "the user's clone changed");
+}
