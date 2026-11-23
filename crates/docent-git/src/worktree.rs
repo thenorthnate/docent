@@ -114,7 +114,7 @@ impl Git {
         dest: &Path,
     ) -> Result<(), GitError> {
         let dest_str = utf8(dest)?;
-        if self.is_worktree_of(clone, dest).await? {
+        if self.lists(clone, dest).await? {
             // `--force`: the worktree is Docent's, so anything written there
             // goes with it.
             self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
@@ -150,7 +150,13 @@ impl Git {
 
     /// Whether `dest` is an existing worktree folder of `clone`.
     async fn is_worktree_of(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
-        let Ok(dest) = dest.canonicalize() else {
+        Ok(dest.is_dir() && self.lists(clone, dest).await?)
+    }
+
+    /// Whether `clone` lists a worktree at `dest`, even one whose folder is
+    /// gone.
+    async fn lists(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
+        let Some(dest) = resolve(dest) else {
             return Ok(false);
         };
         let list = self
@@ -159,7 +165,7 @@ impl Git {
         Ok(list
             .lines()
             .filter_map(|line| line.strip_prefix("worktree "))
-            .any(|path| Path::new(path).canonicalize().is_ok_and(|p| p == dest)))
+            .any(|path| resolve(Path::new(path)).is_some_and(|p| p == dest)))
     }
 }
 
@@ -167,4 +173,13 @@ impl Git {
 fn utf8(path: &Path) -> Result<&str, GitError> {
     path.to_str()
         .ok_or_else(|| GitError::InvalidPath(path.display().to_string()))
+}
+
+/// `path` with symlinks resolved, as far as it exists: a missing last
+/// component is kept as given.
+fn resolve(path: &Path) -> Option<PathBuf> {
+    if let Ok(path) = path.canonicalize() {
+        return Some(path);
+    }
+    Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?))
 }

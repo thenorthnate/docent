@@ -330,7 +330,10 @@ async fn a_pr_head_already_checked_out_on_a_user_branch_still_opens() {
 
 /// The `refs/docent` refs in `clone`, one per line.
 fn docent_refs(clone: &Path) -> String {
-    sh_git(clone, &["for-each-ref", "--format=%(refname)", "refs/docent"])
+    sh_git(
+        clone,
+        &["for-each-ref", "--format=%(refname)", "refs/docent"],
+    )
 }
 
 /// PR 7's removal must leave PR 70 alone: `pull/7` is a prefix of `pull/70`.
@@ -357,7 +360,10 @@ async fn removing_a_pr_worktree_deletes_its_folder_registration_and_pins() {
     assert!(!f.worktree(7).exists(), "the folder is still there");
     let listed = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
     assert!(!listed.contains("pr-7\n"), "still registered: {listed}");
-    assert!(listed.contains("pr-70\n"), "PR 70's worktree went: {listed}");
+    assert!(
+        listed.contains("pr-70\n"),
+        "PR 70's worktree went: {listed}"
+    );
     assert_eq!(
         docent_refs(&f.clone),
         format!("refs/docent/origin/pull/70/{seventy}\nrefs/docent/origin/pull/70/head")
