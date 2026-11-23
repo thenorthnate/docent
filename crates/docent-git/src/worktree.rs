@@ -44,7 +44,7 @@ impl Git {
     ) -> Result<PrWorktree, GitError> {
         check_inside(root, dest)?;
         let dest_str = utf8(dest)?;
-        let head_ref = format!("refs/docent/{remote}/pull/{number}/head");
+        let head_ref = format!("{}head", pull_refs(remote, number));
         let refspec = format!("+refs/pull/{number}/head:{head_ref}");
         self.run_hardened(
             clone,
@@ -74,7 +74,7 @@ impl Git {
             .to_string();
         // Pin this head under its own name, so it stays reachable for
         // interdiffs after the PR is force-pushed.
-        let pin = format!("refs/docent/{remote}/pull/{number}/{sha}");
+        let pin = format!("{}{sha}", pull_refs(remote, number));
         self.run_hardened(clone, &["update-ref", &pin, &sha], TIMEOUT)
             .await?;
 
@@ -120,7 +120,7 @@ impl Git {
     ) -> Result<(), GitError> {
         check_inside(root, dest)?;
         let dest_str = utf8(dest)?;
-        if self.lists(clone, dest).await? {
+        if self.lists_worktree(clone, dest).await? {
             // `--force`: the worktree is Docent's, so anything written there
             // goes with it.
             self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
@@ -130,7 +130,7 @@ impl Git {
         }
         // The trailing slash matches whole path components, so PR 7's pins
         // never include PR 70's.
-        let pins = format!("refs/docent/{remote}/pull/{number}/");
+        let pins = pull_refs(remote, number);
         let refs = self
             .run_hardened(
                 clone,
@@ -158,12 +158,12 @@ impl Git {
 
     /// Whether `dest` is an existing worktree folder of `clone`.
     async fn is_worktree_of(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
-        Ok(dest.is_dir() && self.lists(clone, dest).await?)
+        Ok(dest.is_dir() && self.lists_worktree(clone, dest).await?)
     }
 
     /// Whether `clone` lists a worktree at `dest`, even one whose folder is
     /// gone.
-    async fn lists(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
+    async fn lists_worktree(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
         let Some(dest) = resolve(dest) else {
             return Ok(false);
         };
@@ -175,6 +175,12 @@ impl Git {
             .filter_map(|line| line.strip_prefix("worktree "))
             .any(|path| resolve(Path::new(path)).is_some_and(|p| p == dest)))
     }
+}
+
+/// The folder of refs Docent keeps for PR `number` of `remote`, with its
+/// trailing slash.
+fn pull_refs(remote: &str, number: u64) -> String {
+    format!("refs/docent/{remote}/pull/{number}/")
 }
 
 /// `path` as a `&str`, since git's arguments here must be UTF-8.
@@ -224,6 +230,8 @@ fn clear_stray(root: &Path, dest: &Path) -> Result<(), GitError> {
         return Ok(());
     }
     check_inside(root, dest)?;
-    std::fs::remove_dir_all(dest)
-        .map_err(|err| GitError::Failed(format!("couldn't clear {}: {err}", dest.display())))
+    std::fs::remove_dir_all(dest).map_err(|err| GitError::ClearFailed {
+        path: dest.display().to_string(),
+        why: err.to_string(),
+    })
 }
