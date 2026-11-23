@@ -354,9 +354,12 @@ async fn removing_a_pr_worktree_deletes_its_folder_registration_and_pins() {
         .expect("opens 70");
     let before = f.user_state();
 
-    git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
-        .await
-        .expect("removes");
+    // Removing twice is a no-op the second time.
+    for _ in 0..2 {
+        git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+            .await
+            .expect("removes");
+    }
 
     assert!(!f.worktree(7).exists(), "the folder is still there");
     let listed = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
@@ -482,26 +485,91 @@ async fn a_stray_folder_at_the_worktree_path_is_cleared_on_remove() {
     assert!(!f.worktree(7).exists());
 }
 
-/// Opening clears stray folders too, so it is held to the same boundary.
+/// Opening checks out and clears folders, so it is held to the same
+/// boundary as removal, before it fetches anything: never a folder outside
+/// Docent's worktrees folder, nor the user's own worktree.
+#[cfg(unix)]
 #[tokio::test]
-async fn opening_never_clears_a_folder_outside_the_worktrees_folder() {
+async fn opening_refuses_any_path_outside_the_worktrees_folder() {
     let f = Fixture::new();
+    let git = git();
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
-    let elsewhere = f.data.parent().unwrap().join("elsewhere");
+    let base = f.data.parent().unwrap().to_path_buf();
+    let mine = base.join("mine");
+    sh_git(
+        &f.clone,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "mine",
+            mine.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(mine.join("work.txt"), "unsaved\n").expect("edit");
+    let elsewhere = base.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).expect("folder");
     std::fs::write(elsewhere.join("keep.txt"), "mine\n").expect("write");
+    std::fs::create_dir_all(&f.data).expect("data dir");
+    std::os::unix::fs::symlink(&mine, f.data.join("pr-8")).expect("symlink");
+    std::os::unix::fs::symlink(&base, f.data.join("up")).expect("symlink");
+    let before = f.user_state();
+    let listed_before = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
 
-    let err = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &elsewhere)
-        .await
-        .expect_err("opened outside the worktrees folder");
+    for dest in [
+        mine.clone(),
+        elsewhere.clone(),
+        base.join("new"),
+        f.data.join("..").join("elsewhere"),
+        f.data.join("pr-8"),
+        f.data.join("up").join("elsewhere"),
+        f.data.clone(),
+    ] {
+        let err = git
+            .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+            .await
+            .expect_err(&format!("opened at {}", dest.display()));
+        assert_eq!(err.kind(), "outside_worktrees", "{dest:?}: {err}");
+    }
 
-    assert_eq!(err.kind(), "outside_worktrees");
+    assert_eq!(
+        std::fs::read_to_string(mine.join("work.txt")).unwrap(),
+        "unsaved\n"
+    );
     assert_eq!(
         std::fs::read_to_string(elsewhere.join("keep.txt")).unwrap(),
         "mine\n"
     );
+    assert!(!base.join("new").exists(), "a worktree was made outside");
+    assert_eq!(
+        sh_git(&f.clone, &["worktree", "list", "--porcelain"]),
+        listed_before
+    );
+    assert_eq!(docent_refs(&f.clone), "", "a refused open fetched");
+    assert_eq!(f.user_state(), before, "the user's clone changed");
+}
+
+/// git's ref patterns are globs. A remote whose name has glob characters
+/// (possible only by editing config by hand) must not match another
+/// remote's pins.
+#[tokio::test]
+async fn removing_deletes_only_its_own_remotes_pins() {
+    let f = Fixture::new();
+    let git = git();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("opens");
+    let pins = docent_refs(&f.clone);
+
+    git.remove_pr_worktree(&f.clone, "o*", 7, &f.data, &f.data.join("pr-x"))
+        .await
+        .expect("removes");
+
+    assert_eq!(docent_refs(&f.clone), pins);
 }
 
 /// Deleting refs fires `reference-transaction`, and removing a worktree
