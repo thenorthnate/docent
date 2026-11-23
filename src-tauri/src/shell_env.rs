@@ -63,7 +63,11 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
-    const SECOND: Duration = Duration::from_secs(1);
+    /// For shells that should answer. macOS scans a new executable the first
+    /// time it runs, which takes 100–150 ms and queues behind other tests'
+    /// fresh fake `gh` and shell scripts, so a one-second limit timed out
+    /// under parallel tests. Only the hang test needs a short limit.
+    const ANSWERS_IN: Duration = Duration::from_secs(30);
 
     fn fake_shell(dir: &tempfile::TempDir, body: &str) -> PathBuf {
         let shell = dir.path().join("fake-shell");
@@ -103,7 +107,7 @@ mod tests {
             "echo 'Welcome!'\nPATH=/opt/homebrew/bin:/usr/bin\nexport PATH\nshift\nexec /bin/sh -c \"$1\"\n",
         );
 
-        let path = login_shell_path(&shell, SECOND).await;
+        let path = login_shell_path(&shell, ANSWERS_IN).await;
 
         assert_eq!(path, Some(OsString::from("/opt/homebrew/bin:/usr/bin")));
     }
@@ -118,7 +122,7 @@ mod tests {
             "PATH=.:bin:/usr/bin::./x:/opt/homebrew/bin\nexport PATH\nshift\nexec /bin/sh -c \"$1\"\n",
         );
 
-        let path = login_shell_path(&shell, SECOND).await;
+        let path = login_shell_path(&shell, ANSWERS_IN).await;
 
         assert_eq!(path, Some(OsString::from("/usr/bin:/opt/homebrew/bin")));
     }
@@ -128,11 +132,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
 
         assert_eq!(
-            login_shell_path(&fake_shell(&dir, "exit 1\n"), SECOND).await,
+            login_shell_path(&fake_shell(&dir, "exit 1\n"), ANSWERS_IN).await,
             None
         );
         assert_eq!(
-            login_shell_path(&dir.path().join("missing"), SECOND).await,
+            login_shell_path(&dir.path().join("missing"), ANSWERS_IN).await,
             None
         );
     }
