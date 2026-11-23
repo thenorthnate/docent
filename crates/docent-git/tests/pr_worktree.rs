@@ -364,3 +364,27 @@ async fn removing_a_pr_worktree_deletes_its_folder_registration_and_pins() {
     );
     assert_eq!(f.user_state(), before, "the user's clone changed");
 }
+
+/// The user may have deleted the folder; git still lists it until the
+/// registration goes. Removing again afterwards is a no-op.
+#[tokio::test]
+async fn removing_a_worktree_whose_folder_is_gone_drops_its_registration() {
+    let f = Fixture::new();
+    let git = git();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("opens");
+    std::fs::remove_dir_all(f.worktree(7)).expect("delete the folder");
+
+    for _ in 0..2 {
+        git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+            .await
+            .expect("removes");
+    }
+
+    let listed = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
+    assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
+    assert_eq!(docent_refs(&f.clone), "");
+}
