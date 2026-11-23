@@ -38,7 +38,7 @@ impl Git {
         clone: &Path,
         remote: &str,
         number: u64,
-        _root: &Path,
+        root: &Path,
         dest: &Path,
     ) -> Result<PrWorktree, GitError> {
         let head_ref = format!("refs/docent/{remote}/pull/{number}/head");
@@ -86,6 +86,9 @@ impl Git {
             )
             .await?;
         } else {
+            // A folder git doesn't list (say, from a crash mid-create) would
+            // make `worktree add` fail with "already exists".
+            clear_stray(root, dest)?;
             // `--force` re-adds a worktree whose folder was deleted but whose
             // registration remains.
             self.run_hardened(
@@ -120,6 +123,8 @@ impl Git {
             // goes with it.
             self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
                 .await?;
+        } else {
+            clear_stray(root, dest)?;
         }
         // The trailing slash matches whole path components, so PR 7's pins
         // never include PR 70's.
@@ -208,4 +213,15 @@ fn check_inside(root: &Path, dest: &Path) -> Result<(), GitError> {
         }
     }
     Ok(())
+}
+
+/// Deletes a folder at `dest` that git doesn't list as a worktree, once
+/// [`check_inside`] allows it.
+fn clear_stray(root: &Path, dest: &Path) -> Result<(), GitError> {
+    if dest.symlink_metadata().is_err() {
+        return Ok(());
+    }
+    check_inside(root, dest)?;
+    std::fs::remove_dir_all(dest)
+        .map_err(|err| GitError::Failed(format!("couldn't clear {}: {err}", dest.display())))
 }
