@@ -610,3 +610,43 @@ async fn removing_a_pr_runs_none_of_the_clones_configured_commands() {
     assert_eq!(docent_refs(&f.clone), "", "the pins weren't removed");
     assert!(!marker.exists(), "a clone-configured command ran");
 }
+
+/// A stray folder Docent can't delete is reported as such, not as a git
+/// failure: git never ran.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_stray_folder_that_cannot_be_cleared_says_so() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new();
+    let locked = f.worktree(7).join("locked");
+    std::fs::create_dir_all(&locked).expect("stray folder");
+    std::fs::write(locked.join("file"), "x").expect("write");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).expect("chmod");
+
+    let err = git()
+        .remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect_err("cleared a read-only folder");
+
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    assert_eq!(err.kind(), "clear_failed", "{err}");
+}
+
+/// git's arguments here must be UTF-8.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_non_utf8_worktree_path_is_reported_as_invalid() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let f = Fixture::new();
+    let dest = f.data.join(std::ffi::OsStr::from_bytes(b"pr-\xff"));
+
+    let err = git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+        .await
+        .expect_err("opened at a non-UTF-8 path");
+
+    assert_eq!(err.kind(), "invalid_path", "{err}");
+    assert_eq!(docent_refs(&f.clone), "", "fetched before refusing");
+}
