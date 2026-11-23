@@ -38,6 +38,7 @@ Docent treats PR content as **hostile** until the user trusts the repo, branch o
 - forge token handling: acquiring, storing, and stripping tokens from child process environments, including reconnecting remembered hosts at startup and anything that writes account rows to the store
 - spawning agent, git and `gh` processes, and reading the login shell's `PATH`
 - verification: running commands and managing the verify worktree
+- removing PR worktrees and deleting folders in Docent's worktrees folder, where a path that escapes the folder would delete the user's files
 
 A PR touching any of these ticks the template's security box, includes a denial test, and contains nothing else. Add to this list when new code of this kind appears.
 
