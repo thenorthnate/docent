@@ -447,3 +447,36 @@ async fn removing_refuses_any_path_outside_the_worktrees_folder() {
     assert!(f.data.join("pr-8").symlink_metadata().is_ok());
     assert_eq!(f.user_state(), before, "the user's clone changed");
 }
+
+/// A crash mid-create can leave a folder that git doesn't list. It must not
+/// block opening the PR again.
+#[tokio::test]
+async fn a_stray_folder_at_the_worktree_path_is_cleared_on_open() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    std::fs::create_dir_all(f.worktree(7)).expect("stray folder");
+    std::fs::write(f.worktree(7).join("half-written"), "x").expect("write");
+
+    let opened = git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("opens");
+
+    assert_eq!(sh_git(&opened.path, &["rev-parse", "HEAD"]), head);
+    assert!(!opened.path.join("half-written").exists());
+}
+
+#[tokio::test]
+async fn a_stray_folder_at_the_worktree_path_is_cleared_on_remove() {
+    let f = Fixture::new();
+    std::fs::create_dir_all(f.worktree(7)).expect("stray folder");
+    std::fs::write(f.worktree(7).join("half-written"), "x").expect("write");
+
+    git()
+        .remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists());
+}
