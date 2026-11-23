@@ -2,6 +2,7 @@ mod bind;
 mod command_error;
 mod inbox;
 mod remember;
+mod review;
 mod shell_env;
 mod watch;
 
@@ -10,7 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use command_error::CommandError;
-use docent_forge::{AccountSummary, Accounts, GhCli, Section, SectionPulls};
+use docent_forge::{AccountSummary, Accounts, GhCli, PullOverview, Section, SectionPulls};
 use docent_git::Git;
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{AppHandle, Manager, State};
@@ -163,6 +164,21 @@ async fn list_section(
     inbox::section_pulls(state.accounts(&store).await, &store, section).await
 }
 
+/// The description, checks and timeline of PR `number` in `owner/repo` on
+/// `host`, for the review page's Overview tab. Watched repos only.
+#[tauri::command]
+async fn pull_overview(
+    host: String,
+    owner: String,
+    repo: String,
+    number: u64,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<PullOverview, CommandError> {
+    let accounts = state.accounts(&store).await;
+    review::pull_overview(accounts, &store, &host, &owner, &repo, number).await
+}
+
 /// The app version, shown in the UI so a bug report can name it.
 ///
 /// `env!` reads `CARGO_PKG_VERSION` at compile time. Cargo sets it from the
@@ -200,6 +216,7 @@ pub fn run() {
             list_accounts,
             list_section,
             list_watched_repos,
+            pull_overview,
             unwatch_repo,
             watch_repo
         ])
@@ -217,5 +234,31 @@ mod tests {
             .expect("tauri.conf.json is valid JSON");
 
         assert_eq!(Some(app_version()), conf["version"].as_str());
+    }
+
+    /// One CSP directive's sources from `tauri.conf.json`'s `key` (`csp` or
+    /// `devCsp`).
+    fn csp_sources(key: &str, directive: &str) -> Vec<String> {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json is valid JSON");
+        let sources = conf["app"]["security"][key][directive]
+            .as_str()
+            .unwrap_or_else(|| panic!("{key} sets {directive}"));
+        sources.split_whitespace().map(str::to_string).collect()
+    }
+
+    /// PR bodies, comments and agent output are hostile (PLAN §5.6), so no
+    /// script may come from anywhere but the app's own bundle: no inline
+    /// script, no eval, no remote host. Tauri adds hashes for its own
+    /// injected scripts at build time.
+    #[test]
+    fn the_csp_runs_only_the_apps_own_scripts() {
+        for key in ["csp", "devCsp"] {
+            assert_eq!(csp_sources(key, "default-src"), ["'self'"], "{key}");
+            assert_eq!(csp_sources(key, "script-src"), ["'self'"], "{key}");
+            for directive in ["object-src", "frame-src", "base-uri", "form-action"] {
+                assert_eq!(csp_sources(key, directive), ["'none'"], "{key} {directive}");
+            }
+        }
     }
 }

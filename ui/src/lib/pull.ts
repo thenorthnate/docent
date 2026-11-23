@@ -1,3 +1,5 @@
+import type { Component } from "vue";
+import { CircleCheck, CircleDashed, CircleX, Clock } from "@lucide/vue";
 import type { CiStatus, PullDetails, PullSummary, ReviewState } from "@/stores/inbox";
 
 /** A key naming one PR across hosts, like `github.com/octocat/Hello-World#1347`. */
@@ -11,6 +13,14 @@ export const CI_LABELS: Record<CiStatus, string> = {
   failing: "Checks failing",
   pending: "Checks pending",
   no_checks: "No checks",
+};
+
+/** Each CI status's icon and colour. */
+export const CI_ICONS: Record<CiStatus, { icon: Component; tone: string }> = {
+  passing: { icon: CircleCheck, tone: "text-emerald-600 dark:text-emerald-400" },
+  failing: { icon: CircleX, tone: "text-destructive" },
+  pending: { icon: Clock, tone: "text-amber-600 dark:text-amber-400" },
+  no_checks: { icon: CircleDashed, tone: "text-muted-foreground" },
 };
 
 /** How a row names its review state. */

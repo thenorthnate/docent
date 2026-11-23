@@ -1,14 +1,16 @@
 //! GitHub: its naming rules and the REST calls Docent makes.
 
 mod details;
+mod overview;
 mod repo_name;
 
+pub(crate) use overview::pull_overview;
 pub use repo_name::RepoName;
 
 use octocrab::{Octocrab, Page};
 use tokio::time::Instant;
 
-use crate::{ConnectError, Host, PullSummary, Section, Token};
+use crate::{CiStatus, ConnectError, Host, PullSummary, Section, Token};
 
 #[derive(serde::Deserialize)]
 struct User {
@@ -54,6 +56,26 @@ fn client(host: &Host, api_base: &str, token: &Token) -> Result<Octocrab, Connec
         .map_err(|err| unreachable(err.to_string()))
 }
 
+/// Where `api_base`'s GraphQL endpoint lives, less the `/graphql`:
+/// `https://api.github.com`, or `https://{host}/api` for GitHub Enterprise,
+/// whose REST API is under `/api/v3`.
+pub(crate) fn graphql_base(api_base: &str) -> &str {
+    let base = api_base.trim_end_matches('/');
+    base.strip_suffix("/v3").unwrap_or(base)
+}
+
+/// A head commit's CI status from its `statusCheckRollup.state`, or `None`
+/// when it has no checks or statuses.
+pub(crate) fn ci_status(rollup_state: Option<&str>) -> CiStatus {
+    match rollup_state {
+        None => CiStatus::NoChecks,
+        Some("SUCCESS") => CiStatus::Passing,
+        Some("FAILURE" | "ERROR") => CiStatus::Failing,
+        // `PENDING`, `EXPECTED`, and any state GitHub adds later: not settled.
+        Some(_) => CiStatus::Pending,
+    }
+}
+
 /// `GET path`, with errors mapped so none carries the response body.
 async fn get<T: octocrab::FromResponse>(
     host: &Host,
@@ -62,23 +84,44 @@ async fn get<T: octocrab::FromResponse>(
     path: &str,
 ) -> Result<T, ApiError> {
     let client = client(host, api_base, token).map_err(ApiError::Connect)?;
+    client
+        .get::<T, _, ()>(path, None)
+        .await
+        .map_err(|err| api_error(host, err))
+}
+
+/// `POST path` with a JSON `body`, with errors mapped as for [`get`].
+async fn post<T: octocrab::FromResponse>(
+    host: &Host,
+    api_base: &str,
+    token: &Token,
+    path: &str,
+    body: &impl serde::Serialize,
+) -> Result<T, ApiError> {
+    let client = client(host, api_base, token).map_err(ApiError::Connect)?;
+    client
+        .post(path, Some(body))
+        .await
+        .map_err(|err| api_error(host, err))
+}
+
+/// GitHub errors carry the response body, which the server controls, so
+/// only the status is passed on.
+fn api_error(host: &Host, err: octocrab::Error) -> ApiError {
     let host_name = || host.as_str().to_string();
-    match client.get::<T, _, ()>(path, None).await {
-        Ok(body) => Ok(body),
-        // GitHub errors carry the response body, which the server controls,
-        // so only the status is passed on.
-        Err(octocrab::Error::GitHub { source, .. }) => match source.status_code.as_u16() {
-            401 => Err(ApiError::Connect(ConnectError::TokenRejected(host_name()))),
-            404 => Err(ApiError::NotFound),
-            status => Err(ApiError::Connect(ConnectError::HttpStatus {
+    match err {
+        octocrab::Error::GitHub { source, .. } => match source.status_code.as_u16() {
+            401 => ApiError::Connect(ConnectError::TokenRejected(host_name())),
+            404 => ApiError::NotFound,
+            status => ApiError::Connect(ConnectError::HttpStatus {
                 host: host_name(),
                 status,
-            })),
+            }),
         },
-        Err(err) => Err(ApiError::Connect(ConnectError::Unreachable {
+        err => ApiError::Connect(ConnectError::Unreachable {
             host: host_name(),
             reason: err.to_string(),
-        })),
+        }),
     }
 }
 
