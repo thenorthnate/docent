@@ -298,3 +298,32 @@ async fn a_configured_pull_refspec_does_not_touch_the_users_refs() {
 
     assert_eq!(f.user_state(), before, "the user's clone changed");
 }
+
+/// The PR's author, or anyone who checked the PR out, may have its head on a
+/// local branch, even with uncommitted edits. The worktree is detached, so git
+/// allows the same commit there, and the user's branch and edits stay put.
+#[tokio::test]
+async fn a_pr_head_already_checked_out_on_a_user_branch_still_opens() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    sh_git(
+        &f.clone,
+        &["fetch", "--quiet", "origin", "refs/pull/7/head:feature"],
+    );
+    sh_git(&f.clone, &["switch", "--quiet", "feature"]);
+    std::fs::write(f.clone.join("feature.txt"), "my edit\n").expect("edit");
+    let before = f.user_state();
+
+    let opened = git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.worktree(7))
+        .await
+        .expect("opens");
+
+    assert_eq!(sh_git(&opened.path, &["rev-parse", "HEAD"]), head);
+    assert_eq!(f.user_state(), before, "the user's branch or edits changed");
+    assert_eq!(
+        std::fs::read_to_string(f.clone.join("feature.txt")).unwrap(),
+        "my edit\n"
+    );
+}
