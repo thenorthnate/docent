@@ -480,3 +480,64 @@ async fn a_stray_folder_at_the_worktree_path_is_cleared_on_remove() {
 
     assert!(!f.worktree(7).exists());
 }
+
+/// Opening clears stray folders too, so it is held to the same boundary.
+#[tokio::test]
+async fn opening_never_clears_a_folder_outside_the_worktrees_folder() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let elsewhere = f.data.parent().unwrap().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).expect("folder");
+    std::fs::write(elsewhere.join("keep.txt"), "mine\n").expect("write");
+
+    let err = git()
+        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &elsewhere)
+        .await
+        .expect_err("opened outside the worktrees folder");
+
+    assert_eq!(err.kind(), "outside_worktrees");
+    assert_eq!(
+        std::fs::read_to_string(elsewhere.join("keep.txt")).unwrap(),
+        "mine\n"
+    );
+}
+
+/// Deleting refs fires `reference-transaction`, and removing a worktree
+/// reads the clone's config: none of the clone's commands may run.
+#[cfg(unix)]
+#[tokio::test]
+async fn removing_a_pr_runs_none_of_the_clones_configured_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("opens");
+    let marker = f.data.parent().unwrap().join("PWNED");
+    let script = f.clone.join(".git/evil.sh");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .expect("write script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    for hook in ["reference-transaction", "post-checkout", "pre-auto-gc"] {
+        std::fs::copy(&script, f.clone.join(".git/hooks").join(hook)).expect("install hook");
+    }
+    sh_git(
+        &f.clone,
+        &["config", "core.fsmonitor", script.to_str().unwrap()],
+    );
+    sh_git(&f.clone, &["config", "gc.auto", "1"]);
+
+    git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .await
+        .expect("removes");
+
+    assert_eq!(docent_refs(&f.clone), "", "the pins weren't removed");
+    assert!(!marker.exists(), "a clone-configured command ran");
+}
