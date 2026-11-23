@@ -54,9 +54,11 @@ async fn any_remote_can_match_and_case_is_ignored() {
 
     let clone = git()
         .check_clone(repo.path(), "github.com", "octocat", "Hello-World")
-        .await;
+        .await
+        .expect("matches");
 
-    assert!(clone.is_ok(), "{clone:?}");
+    // PR heads are fetched from the remote that matched.
+    assert_eq!(clone.remote, "upstream");
 }
 
 #[tokio::test]

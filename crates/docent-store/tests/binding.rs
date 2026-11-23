@@ -71,3 +71,40 @@ async fn a_binding_survives_reopening_the_file() {
     let repo = reopened.watched_repo(id).await.unwrap();
     assert_eq!(repo.local_path.as_deref(), Some("/Users/me/code/hello"));
 }
+
+/// A route names a PR's repo by host, owner and name, in any case.
+#[tokio::test]
+async fn a_watched_repo_can_be_looked_up_by_name_in_any_case() {
+    let store = Store::open_in_memory().await.unwrap();
+    let id = watched(&store, "Hello-World").await;
+
+    let repo = store
+        .watched_repo_named("GitHub.com", "OctoCat", "hello-world")
+        .await
+        .expect("found");
+
+    assert_eq!(repo.id, id);
+}
+
+#[tokio::test]
+async fn an_unknown_or_unwatched_name_is_not_watched() {
+    let store = Store::open_in_memory().await.unwrap();
+    let id = watched(&store, "Hello-World").await;
+    store.unwatch_repo(id).await.unwrap();
+
+    for (host, name) in [
+        ("github.com", "Hello-World"),
+        ("github.com", "Spoon-Knife"),
+        ("ghe.example.com", "Hello-World"),
+    ] {
+        let err = store
+            .watched_repo_named(host, "octocat", name)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            StoreError::NotWatched(format!("{host}:octocat/{name}"))
+        );
+        assert_eq!(err.kind(), "not_watched");
+    }
+}

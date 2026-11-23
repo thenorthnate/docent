@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
+import PrWorktree from "@/components/PrWorktree.vue";
 import PullOverview from "@/components/PullOverview.vue";
 import { messageOf } from "@/lib/ipc";
 import { CI_ICONS, CI_LABELS, pullKey } from "@/lib/pull";
@@ -93,6 +94,13 @@ watch(
         {{ CI_LABELS[overview.ci] }}
       </span>
     </header>
+
+    <PrWorktree
+      :host="pr.host"
+      :owner="pr.owner"
+      :repo="pr.repo"
+      :number="pr.number"
+    />
 
     <div
       role="tablist"
