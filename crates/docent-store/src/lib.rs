@@ -48,7 +48,7 @@ pub enum StoreError {
     AlreadyWatched(String),
     #[error("No watched repo has id {0}.")]
     RepoNotFound(RepoId),
-    #[error("{0} isn't watched. Watch it in Settings → Watched repos to review its PRs.")]
+    #[error("{0} isn't watched. Watch it under Inbox → Watched repos to review its PRs.")]
     NotWatched(String),
     #[error("Docent's database failed: {0}")]
     Database(String),
