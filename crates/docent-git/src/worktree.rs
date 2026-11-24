@@ -117,6 +117,10 @@ impl Git {
         dest: &PrWorktreePath,
     ) -> Result<(), GitError> {
         dest.check_inside()?;
+        // With the clone gone, so are its registration and pins.
+        if !clone.exists() {
+            return dest.clear_stray();
+        }
         let number = dest.number();
         let dest_str = utf8(dest.path())?;
         if self.lists_worktree(clone, dest.path()).await? {
