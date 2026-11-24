@@ -46,19 +46,13 @@ impl PrWorktreePath {
         self.number
     }
 
-    /// Refuses a path that a symlink, at its end or on the way, would lead
-    /// out of the root.
+    /// Refuses a path with a symlink below the root, which could lead to the
+    /// user's files or to another repo's worktrees. The root itself may be
+    /// reached through one.
     pub(crate) fn check_inside(&self) -> Result<(), GitError> {
-        let refuse = || Err(self.outside());
-        if is_symlink(&self.path) {
-            return refuse();
-        }
-        // A path that doesn't resolve has no folder.
-        if let Some(resolved) = resolve(&self.path) {
-            match resolve(&self.root) {
-                Some(root) if resolved.starts_with(&root) && resolved != root => {}
-                _ => return refuse(),
-            }
+        let repo_dir = self.path.parent().unwrap_or(&self.root);
+        if is_symlink(repo_dir) || is_symlink(&self.path) {
+            return Err(self.outside());
         }
         Ok(())
     }
