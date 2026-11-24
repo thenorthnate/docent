@@ -691,3 +691,53 @@ async fn a_worktree_whose_clone_is_gone_can_be_removed() {
 
     assert!(!f.worktree(7).exists());
 }
+
+/// A repo's folder swapped for a symlink between the check and the delete
+/// must not lead the delete elsewhere. The swap is raced for real, so a
+/// single pass proves little; many do.
+#[cfg(unix)]
+#[tokio::test]
+async fn swapping_a_folder_for_a_symlink_mid_removal_deletes_nothing_outside() {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let f = Fixture::new();
+    let no_clone = f.data.join("no-clone");
+    let victim = f.data.parent().unwrap().join("victim");
+    let keep = victim.join("pr-7").join("keep.txt");
+    std::fs::create_dir_all(keep.parent().unwrap()).expect("victim");
+    std::fs::write(&keep, "mine\n").expect("write");
+    let (repo, link) = (f.data.join("1"), f.data.join("link"));
+    std::fs::create_dir_all(repo.join("pr-7")).expect("stray folder");
+    std::os::unix::fs::symlink(&victim, &link).expect("symlink");
+    // A read-only repo folder keeps its stray, so every attempt gets as far as
+    // deleting, and only a delete through the symlink can succeed.
+    let mode = std::fs::Permissions::from_mode;
+    std::fs::set_permissions(&repo, mode(0o555)).expect("chmod");
+    let stop = Arc::new(AtomicBool::new(false));
+    let swapper = std::thread::spawn({
+        let (stop, repo, link) = (stop.clone(), repo.clone(), link.clone());
+        move || {
+            while !stop.load(Ordering::Relaxed) {
+                // One atomic step, so the swap fits in the race's tiny window.
+                renameat_with(CWD, &repo, CWD, &link, RenameFlags::EXCHANGE).expect("swap");
+            }
+        }
+    });
+
+    let git = git();
+    for _ in 0..50_000 {
+        // Any error is fine; deleting `keep` isn't.
+        let _ = git
+            .remove_pr_worktree(&no_clone, "origin", &f.dest(7))
+            .await;
+    }
+    stop.store(true, Ordering::Relaxed);
+    swapper.join().expect("swapper");
+    let real = if link.is_symlink() { repo } else { link };
+    std::fs::set_permissions(real, mode(0o755)).expect("chmod");
+
+    assert!(keep.exists(), "the delete followed the symlink");
+}
