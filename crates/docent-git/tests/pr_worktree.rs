@@ -671,3 +671,23 @@ async fn a_repo_folder_linked_to_another_repos_is_refused() {
     assert_eq!(opened.unwrap_err().kind(), "outside_worktrees");
     assert!(f.worktree(7).join("keep.txt").exists());
 }
+
+/// The user may delete or move their clone. Its worktrees still take up
+/// space, so they can still be removed.
+#[tokio::test]
+async fn a_worktree_whose_clone_is_gone_can_be_removed() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect("opens");
+    std::fs::remove_dir_all(&f.clone).expect("delete the clone");
+
+    git.remove_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists());
+}
