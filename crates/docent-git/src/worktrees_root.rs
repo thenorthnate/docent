@@ -3,6 +3,7 @@
 //! from a repo id and PR number, and is checked against symlinks on disk.
 
 use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use rustix::fs::{AtFlags, Dir, Mode, OFlags, openat, unlinkat};
@@ -93,9 +94,15 @@ impl PrWorktreePath {
         remove_at(&repo, leaf)
     }
 
-    /// The bytes this worktree takes up on disk.
+    /// The bytes this worktree takes up on disk, following no symlinks. Zero
+    /// if it doesn't exist. Reads the whole tree, so call it off the async
+    /// threads.
     pub fn disk_use(&self) -> Result<u64, GitError> {
-        Ok(0)
+        self.check_inside()?;
+        disk_use(&self.path).map_err(|err| GitError::MeasureFailed {
+            path: self.path.display().to_string(),
+            why: err.to_string(),
+        })
     }
 
     fn outside(&self) -> GitError {
@@ -139,4 +146,28 @@ fn remove_at(parent: &OwnedFd, name: impl Arg + Copy) -> Result<(), Errno> {
         }
     }
     unlinkat(parent, name, AtFlags::REMOVEDIR)
+}
+
+/// Blocks in use at `path` and below. Anything deleted meanwhile counts zero.
+fn disk_use(path: &Path) -> std::io::Result<u64> {
+    let gone_is_empty = |err: std::io::Error| match err.kind() {
+        std::io::ErrorKind::NotFound => Ok(0),
+        _ => Err(err),
+    };
+    let meta = match path.symlink_metadata() {
+        Ok(meta) => meta,
+        Err(err) => return gone_is_empty(err),
+    };
+    // `blocks` is in 512-byte units whatever the file system's block size.
+    let mut used = meta.blocks() * 512;
+    if meta.is_dir() {
+        let entries = match path.read_dir() {
+            Ok(entries) => entries,
+            Err(err) => return gone_is_empty(err),
+        };
+        for entry in entries {
+            used += disk_use(&entry?.path())?;
+        }
+    }
+    Ok(used)
 }
