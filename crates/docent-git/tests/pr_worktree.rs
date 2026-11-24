@@ -649,3 +649,25 @@ async fn a_non_utf8_worktree_path_is_reported_as_invalid() {
     assert_eq!(err.kind(), "invalid_path", "{err}");
     assert_eq!(docent_refs(&f.clone), "", "fetched before refusing");
 }
+
+/// Staying inside the root isn't enough: a repo's folder that is a symlink to
+/// another repo's must not let one reach the other's worktrees.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repo_folder_linked_to_another_repos_is_refused() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    std::fs::create_dir_all(f.worktree(7)).expect("repo 1's folder");
+    std::fs::write(f.worktree(7).join("keep.txt"), "x").expect("write");
+    std::os::unix::fs::symlink(f.data.join("1"), f.data.join("8")).expect("symlink");
+    let dest = WorktreesRoot::new(&f.data).pr(8, 7);
+
+    let removed = git.remove_pr_worktree(&f.clone, "origin", &dest).await;
+    let opened = git.open_pr_worktree(&f.clone, "origin", &dest).await;
+
+    assert_eq!(removed.unwrap_err().kind(), "outside_worktrees");
+    assert_eq!(opened.unwrap_err().kind(), "outside_worktrees");
+    assert!(f.worktree(7).join("keep.txt").exists());
+}
