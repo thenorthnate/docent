@@ -2,7 +2,12 @@
 //! worktrees writes and deletes folders, so a path here can only be derived
 //! from a repo id and PR number, and is checked against symlinks on disk.
 
+use std::os::fd::{AsFd, OwnedFd};
 use std::path::{Path, PathBuf};
+
+use rustix::fs::{AtFlags, Dir, Mode, OFlags, openat, unlinkat};
+use rustix::io::Errno;
+use rustix::path::Arg;
 
 use crate::GitError;
 
@@ -57,16 +62,35 @@ impl PrWorktreePath {
         Ok(())
     }
 
-    /// Deletes a folder here that git doesn't list as a worktree.
+    /// Deletes anything here that git doesn't list as a worktree. Works down
+    /// from a handle on the root, never following a symlink below it, so a
+    /// folder swapped for one mid-way can't lead the delete elsewhere.
     pub(crate) fn clear_stray(&self) -> Result<(), GitError> {
-        if self.path.symlink_metadata().is_err() {
-            return Ok(());
-        }
         self.check_inside()?;
-        std::fs::remove_dir_all(&self.path).map_err(|err| GitError::ClearFailed {
-            path: self.path.display().to_string(),
-            why: err.to_string(),
-        })
+        match self.clear() {
+            Ok(()) | Err(Errno::NOENT) => Ok(()),
+            Err(Errno::LOOP | Errno::NOTDIR) => Err(self.outside()),
+            Err(err) => Err(GitError::ClearFailed {
+                path: self.path.display().to_string(),
+                why: err.to_string(),
+            }),
+        }
+    }
+
+    fn clear(&self) -> Result<(), Errno> {
+        let (Some(repo), Some(leaf)) = (
+            self.path.parent().and_then(Path::file_name),
+            self.path.file_name(),
+        ) else {
+            return Err(Errno::INVAL);
+        };
+        let root = rustix::fs::open(
+            &self.root,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?;
+        let repo = open_dir_at(&root, repo)?;
+        remove_at(&repo, leaf)
     }
 
     fn outside(&self) -> GitError {
@@ -86,4 +110,28 @@ pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
         return Some(path);
     }
     Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?))
+}
+
+/// Opens folder `name` in `parent`, failing if it is a symlink.
+fn open_dir_at(parent: impl AsFd, name: impl Arg) -> Result<OwnedFd, Errno> {
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    openat(parent, name, flags, Mode::empty())
+}
+
+/// Deletes `name` in `parent` and everything below it, without following
+/// symlinks.
+fn remove_at(parent: &OwnedFd, name: impl Arg + Copy) -> Result<(), Errno> {
+    match unlinkat(parent, name, AtFlags::empty()) {
+        // It's a folder: Linux says ISDIR, macOS PERM.
+        Err(Errno::ISDIR | Errno::PERM) => {}
+        done => return done,
+    }
+    let dir = open_dir_at(parent, name)?;
+    for entry in Dir::read_from(&dir)?.collect::<Result<Vec<_>, _>>()? {
+        let name = entry.file_name();
+        if name != c"." && name != c".." {
+            remove_at(&dir, name)?;
+        }
+    }
+    unlinkat(parent, name, AtFlags::REMOVEDIR)
 }
