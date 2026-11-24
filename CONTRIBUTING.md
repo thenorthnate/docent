@@ -76,12 +76,12 @@ You need Rust (stable), Node 24 or later, pnpm (the version is pinned in `packag
 
 ## After a PR merges
 
-Once the maintainer says a PR is merged, the agent that worked on it cleans up:
+Once the maintainer says a PR is merged, the agent that worked on it cleans up. If a step fails, stop and tell the maintainer rather than forcing it:
 
-1. **Confirm the merge.** `gh pr view <number> --json state` must say `MERGED`, and `git status` must be clean. If either fails, stop and tell the maintainer.
+1. **Confirm the merge.** `gh pr view <number> --json state` must say `MERGED`, and `git status` must be clean.
 2. **Pull `main`:** `git switch main`, then `git pull --ff-only`.
-3. **Delete the local branch.** PRs are squash-merged, so git doesn't see the branch as merged and `git branch -d` refuses. First check that nothing on it was left out of the merge: the branch tip (`git rev-parse <branch>`) must be the PR's last commit (`gh pr view <number> --json headRefOid`). If they match, run `git branch -D <branch>`, then `git fetch --prune`. If they don't, keep the branch and tell the maintainer. Leave other branches and worktrees alone.
-4. **Tick tracking issues.** Check that each issue the PR closes is closed, and tick it on its milestone's tracking issue. If the PR was only part of an issue, leave that issue open and unticked.
+3. **Delete the local branch.** PRs are squash-merged, so git doesn't see the branch as merged and `git branch -d` refuses. First check that nothing on it was left out of the merge: the branch tip (`git rev-parse <branch>`) must be the PR's last commit (`gh pr view <number> --json headRefOid`). If they match, run `git branch -D <branch>`, then `git fetch --prune`. If they don't, keep the branch. Leave other branches and worktrees alone.
+4. **Tick tracking issues.** Check that each issue the PR closes is closed (if one is still open, ask the maintainer), and tick it on its milestone's tracking issue. If the PR was only part of an issue, leave that issue open and unticked.
 
 ## Dependencies
 

@@ -78,6 +78,8 @@ impl Git {
         self.run_hardened(clone, &["update-ref", &pin, &sha], TIMEOUT)
             .await?;
 
+        // Again, since the fetch can take minutes.
+        dest.check_inside()?;
         if self.is_worktree_of(clone, dest.path()).await? {
             // The worktree is Docent's and read-only, so `--force` throws away
             // anything written there rather than refusing to move.
@@ -117,8 +119,12 @@ impl Git {
         dest: &PrWorktreePath,
     ) -> Result<(), GitError> {
         dest.check_inside()?;
-        // With the clone gone, so are its registration and pins.
-        if !clone.exists() {
+        // A deleted clone took its registration and pins with it. A moved one
+        // keeps them where Docent can't find them, but the disk space is freed.
+        let clone_exists = clone
+            .try_exists()
+            .map_err(|err| GitError::Failed(format!("{}: {err}", clone.display())))?;
+        if !clone_exists {
             return dest.clear_stray();
         }
         let number = dest.number();
