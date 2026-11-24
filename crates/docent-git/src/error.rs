@@ -15,6 +15,12 @@ pub enum GitError {
     },
     #[error("Docent can't put a worktree at {0}: git needs a UTF-8 path. Report this as a bug.")]
     InvalidPath(String),
+    #[error(
+        "Docent only removes worktrees in its own worktrees folder, and {0} isn't in it. Report this as a bug."
+    )]
+    OutsideWorktrees(String),
+    #[error("Docent couldn't delete the leftover folder at {path}: {why}")]
+    ClearFailed { path: String, why: String },
     #[error("git failed: {0}")]
     Failed(String),
 }
@@ -38,6 +44,8 @@ impl GitError {
             Self::NotARepo(_) => "not_a_repo",
             Self::NoMatchingRemote { .. } => "no_matching_remote",
             Self::InvalidPath(_) => "invalid_path",
+            Self::OutsideWorktrees(_) => "outside_worktrees",
+            Self::ClearFailed { .. } => "clear_failed",
             Self::Failed(_) => "git_failed",
         }
     }
