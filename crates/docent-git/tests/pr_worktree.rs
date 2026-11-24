@@ -741,3 +741,62 @@ async fn swapping_a_folder_for_a_symlink_mid_removal_deletes_nothing_outside() {
 
     assert!(keep.exists(), "the delete followed the symlink");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn clearing_a_stray_folder_deletes_links_but_not_what_they_point_to() {
+    let f = Fixture::new();
+    let outside = f.data.parent().unwrap().join("outside");
+    std::fs::create_dir_all(&outside).expect("folder");
+    std::fs::write(outside.join("keep.txt"), "mine\n").expect("write");
+    std::fs::create_dir_all(f.worktree(7).join("a/b")).expect("stray folder");
+    std::os::unix::fs::symlink(&outside, f.worktree(7).join("a/b/link")).expect("symlink");
+
+    git()
+        .remove_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists());
+    assert!(outside.join("keep.txt").exists());
+}
+
+/// A PR can commit a symlink to anywhere; what it points to isn't the
+/// worktree's disk use, and a link to a parent must not loop.
+#[cfg(unix)]
+#[test]
+fn disk_use_counts_files_but_follows_no_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let f = Fixture::new();
+    let outside = f.data.parent().unwrap().join("outside");
+    std::fs::create_dir_all(&outside).expect("folder");
+    std::fs::write(outside.join("big"), vec![1; 4_000_000]).expect("write");
+    let worktree = f.worktree(7);
+    std::fs::create_dir_all(worktree.join("src")).expect("worktree");
+    std::fs::write(worktree.join("src/file"), vec![1; 1_000_000]).expect("write");
+    symlink(&outside, worktree.join("dir-link")).expect("symlink");
+    symlink(outside.join("big"), worktree.join("file-link")).expect("symlink");
+    symlink("..", worktree.join("src/loop")).expect("symlink");
+
+    let used = f.dest(7).disk_use().expect("measures");
+
+    assert!((1_000_000..1_200_000).contains(&used), "{used}");
+    assert_eq!(
+        f.dest(8).disk_use(),
+        Ok(0),
+        "a missing worktree uses nothing"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn disk_use_refuses_a_symlinked_worktree() {
+    let f = Fixture::new();
+    let outside = f.data.parent().unwrap().join("outside");
+    std::fs::create_dir_all(&outside).expect("folder");
+
+    for dest in symlinked_dests(&f, &outside) {
+        assert_eq!(dest.disk_use().unwrap_err().kind(), "outside_worktrees");
+    }
+}

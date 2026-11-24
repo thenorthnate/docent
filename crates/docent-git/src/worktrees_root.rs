@@ -93,6 +93,11 @@ impl PrWorktreePath {
         remove_at(&repo, leaf)
     }
 
+    /// The bytes this worktree takes up on disk.
+    pub fn disk_use(&self) -> Result<u64, GitError> {
+        Ok(0)
+    }
+
     fn outside(&self) -> GitError {
         GitError::OutsideWorktrees(self.path.display().to_string())
     }
