@@ -728,11 +728,13 @@ async fn swapping_a_folder_for_a_symlink_mid_removal_deletes_nothing_outside() {
     });
 
     let git = git();
+    let mut attempts = 0;
     for _ in 0..50_000 {
         // Any error is fine; deleting `keep` isn't.
-        let _ = git
+        let result = git
             .remove_pr_worktree(&no_clone, "origin", &f.dest(7))
             .await;
+        attempts += u32::from(result.is_err_and(|err| err.kind() == "clear_failed"));
     }
     stop.store(true, Ordering::Relaxed);
     swapper.join().expect("swapper");
@@ -740,6 +742,10 @@ async fn swapping_a_folder_for_a_symlink_mid_removal_deletes_nothing_outside() {
     std::fs::set_permissions(real, mode(0o755)).expect("chmod");
 
     assert!(keep.exists(), "the delete followed the symlink");
+    assert!(
+        attempts > 0,
+        "no delete got past the check, so nothing raced"
+    );
 }
 
 #[cfg(unix)]
@@ -799,4 +805,109 @@ fn disk_use_refuses_a_symlinked_worktree() {
     for dest in symlinked_dests(&f, &outside) {
         assert_eq!(dest.disk_use().unwrap_err().kind(), "outside_worktrees");
     }
+}
+
+/// Something else may be deleting the same folder. Success must still mean
+/// it's gone.
+#[tokio::test]
+async fn clearing_a_folder_being_deleted_elsewhere_only_succeeds_once_it_is_gone() {
+    let f = Fixture::new();
+    let no_clone = f.data.join("no-clone");
+    for _ in 0..30 {
+        let files: Vec<_> = (0..200)
+            .map(|n| f.worktree(7).join(format!("f{n}")))
+            .collect();
+        std::fs::create_dir_all(f.worktree(7)).expect("stray folder");
+        for file in &files {
+            std::fs::write(file, "x").expect("write");
+        }
+        let other = std::thread::spawn(move || {
+            for file in files.iter().rev().step_by(2) {
+                let _ = std::fs::remove_file(file);
+            }
+        });
+
+        let result = git()
+            .remove_pr_worktree(&no_clone, "origin", &f.dest(7))
+            .await;
+
+        let left = f.worktree(7).exists();
+        other.join().expect("other deleter");
+        result.expect("removes");
+        assert!(!left, "reported success with the folder still there");
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn an_immutable_file_is_reported_as_uncleared() {
+    let f = Fixture::new();
+    std::fs::create_dir_all(f.worktree(7)).expect("stray folder");
+    let file = f.worktree(7).join("locked");
+    std::fs::write(&file, "x").expect("write");
+    let chflags = |flag: &str| {
+        let status = Command::new("chflags").arg(flag).arg(&file).status();
+        assert!(status.expect("chflags").success());
+    };
+    chflags("uchg");
+
+    let err = git()
+        .remove_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect_err("cleared an immutable file");
+
+    chflags("nouchg");
+    assert_eq!(err.kind(), "clear_failed", "{err}");
+}
+
+/// A fetch can take minutes. A folder swapped meanwhile for a symlink to the
+/// user's own worktree must not be checked out over.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlink_planted_during_the_fetch_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let mine = f.data.parent().unwrap().join("mine");
+    let mine_str = mine.to_str().unwrap();
+    sh_git(
+        &f.clone,
+        &["worktree", "add", "--quiet", "-b", "mine", mine_str],
+    );
+    std::fs::write(mine.join("README"), "unsaved\n").expect("edit");
+    std::fs::create_dir_all(f.data.join("1")).expect("repo folder");
+    // The fetch runs this, which plants the symlink and then serves it.
+    let script = f.clone.join(".git/upload-pack.sh");
+    let link = f.worktree(7);
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nln -s '{mine_str}' '{}'\nexec git upload-pack \"$@\"\n",
+            link.display()
+        ),
+    )
+    .expect("write script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    sh_git(
+        &f.clone,
+        &[
+            "config",
+            "remote.origin.uploadpack",
+            script.to_str().unwrap(),
+        ],
+    );
+
+    let err = git()
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect_err("checked out over the user's worktree");
+
+    assert!(link.is_symlink(), "the fetch planted the symlink");
+    assert_eq!(err.kind(), "outside_worktrees", "{err}");
+    assert_eq!(
+        std::fs::read_to_string(mine.join("README")).unwrap(),
+        "unsaved\n"
+    );
 }
