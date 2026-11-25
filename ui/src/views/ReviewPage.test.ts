@@ -228,7 +228,7 @@ describe("ReviewPage worktree", () => {
         if (answer && "kind" in answer) throw answer;
         return answer;
       }
-      if (cmd === "bind_repo") return bind;
+      if (cmd === "bind_repo" || cmd === "clone_repo") return bind;
       throw new Error(`unexpected command: ${cmd}`);
     };
     return calls;
@@ -294,11 +294,28 @@ describe("ReviewPage worktree", () => {
     const status = await open();
     expect(status.text()).toContain("isn't bound to a local clone");
     const clone = status.findAll("button").find((b) => b.text() === "Clone");
-    expect(clone?.attributes("disabled")).toBeDefined();
+    expect(clone?.attributes("disabled")).toBeUndefined();
     await status.findAll("button").find((b) => b.text() === "Bind")!.trigger("click");
     await flushPromises();
 
     expect(calls).toContainEqual({ cmd: "bind_repo", args: { id: 3 } });
+    expect(status.text()).toContain("Worktree ready at ccccccc");
+  });
+
+  it("clones an unbound repo, then opens the worktree", async () => {
+    const calls = mockCore(
+      [
+        { status: "unbound", repo },
+        { status: "ready", path: "/w", head_sha: "c".repeat(40) },
+      ],
+      { ...repo, local_path: "/Users/me/code/Hello-World" },
+    );
+
+    const status = await open();
+    await status.findAll("button").find((b) => b.text() === "Clone")!.trigger("click");
+    await flushPromises();
+
+    expect(calls.map((c) => c.cmd)).toEqual(["open_pr_worktree", "clone_repo", "open_pr_worktree"]);
     expect(status.text()).toContain("Worktree ready at ccccccc");
   });
 

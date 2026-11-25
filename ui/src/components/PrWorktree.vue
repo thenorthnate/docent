@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import CloneButton from "@/components/CloneButton.vue";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/ipc";
+import { useClonesStore } from "@/stores/clones";
 
 const props = defineProps<{ host: string; owner: string; repo: string; number: number }>();
 const emit = defineEmits<{ ready: [headSha: string] }>();
@@ -13,12 +15,9 @@ type WatchedRepo = { id: number; owner: string; name: string; local_path: string
 type Opened = { status: "ready"; path: string; head_sha: string } | { status: "unbound"; repo: WatchedRepo };
 type State = { status: "preparing" } | Opened | { status: "error"; message: string };
 
-/** What Clone will do once it lands (#19). */
-const CLONE_TOOLTIP =
-  "Clone: make a full clone into a folder you pick, using your existing git credentials. Coming soon.";
-
 const state = ref<State>({ status: "preparing" });
 const binding = ref(false);
+const clones = useClonesStore();
 /** Counts requests, so an answer for a PR we've navigated away from is dropped. */
 let latest = 0;
 
@@ -54,6 +53,13 @@ async function bind(id: number) {
 }
 
 watch(() => [props.host, props.owner, props.repo, props.number], open, { immediate: true });
+// The clone may have been started elsewhere, such as Watched repos.
+watch(
+  () => clones.finished,
+  () => {
+    if (state.value.status === "unbound") void open();
+  },
+);
 </script>
 
 <template>
@@ -85,25 +91,19 @@ watch(() => [props.host, props.owner, props.repo, props.number], open, { immedia
         {{ state.repo.owner }}/{{ state.repo.name }} isn't bound to a local clone yet. Docent reads PRs from
         a clone on this machine.
       </p>
-      <div class="flex gap-1">
+      <div class="flex flex-wrap gap-1">
         <Button
           variant="outline"
           size="xs"
-          :disabled="binding"
+          :disabled="binding || state.repo.id in clones.running"
           @click="bind(state.repo.id)"
         >
           Bind
         </Button>
-        <!-- A disabled button ignores the pointer, so the tooltip sits on a wrapper. -->
-        <span :title="CLONE_TOOLTIP">
-          <Button
-            variant="outline"
-            size="xs"
-            disabled
-          >
-            Clone
-          </Button>
-        </span>
+        <CloneButton
+          :id="state.repo.id"
+          :disabled="binding"
+        />
       </div>
     </div>
     <div

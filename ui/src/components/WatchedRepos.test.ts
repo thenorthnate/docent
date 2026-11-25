@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import type { Channel } from "@tauri-apps/api/core";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { createPinia } from "pinia";
+import type { CloneUpdate } from "@/stores/clones";
 import WatchedRepos from "./WatchedRepos.vue";
 
 type Account = { host: string; login: string; error?: Failure | null };
@@ -25,7 +27,24 @@ type CoreOptions = {
   failAccounts?: Failure;
   /** What Bind's folder picker yields: a clone path, a cancel, or a failure. */
   bind?: { path: string } | "cancel" | Failure;
+  /** Answers Clone. */
+  clone?: (args: unknown) => unknown;
 };
+
+/** A clone that reports and finishes when told to. */
+function deferredClone() {
+  let channel: Channel<CloneUpdate>;
+  let resolve!: (repo: Repo) => void;
+  const answer = new Promise<Repo>((r) => (resolve = r));
+  return {
+    run: (args: unknown) => {
+      channel = (args as { onProgress: Channel<CloneUpdate> }).onProgress;
+      return answer;
+    },
+    report: (update: CloneUpdate) => channel.onmessage(update),
+    resolve: (repo: Repo) => resolve(repo),
+  };
+}
 
 function mockCore(accounts: Account[], options: CoreOptions = {}) {
   const repos: Repo[] = [];
@@ -64,6 +83,8 @@ function mockCore(accounts: Account[], options: CoreOptions = {}) {
         repo.local_path = bind.path;
         return { ...repo };
       }
+      case "clone_repo":
+        return options.clone?.(args) ?? null;
       case "list_section":
         return { pulls: [], failures: [] };
       default:
@@ -73,8 +94,8 @@ function mockCore(accounts: Account[], options: CoreOptions = {}) {
   return { calls, repos };
 }
 
-async function mountRepos() {
-  const wrapper = mount(WatchedRepos, { global: { plugins: [createPinia()] } });
+async function mountRepos(pinia = createPinia()) {
+  const wrapper = mount(WatchedRepos, { global: { plugins: [pinia] } });
   await flushPromises();
   return wrapper;
 }
@@ -196,7 +217,7 @@ describe("WatchedRepos", () => {
       .find((b) => b.text() === label);
   }
 
-  it("offers Bind, and Clone as coming soon, for a repo with no local clone", async () => {
+  it("offers Bind and Clone for a repo with no local clone", async () => {
     mockCore([{ host: "github.com", login: "octocat" }]);
     const wrapper = await mountRepos();
 
@@ -204,12 +225,78 @@ describe("WatchedRepos", () => {
 
     expect(button(wrapper, "Bind")?.attributes("disabled")).toBeUndefined();
     expect(button(wrapper, "Bind")?.attributes("title")).toContain("already have");
-    expect(button(wrapper, "Clone")?.attributes("disabled")).toBeDefined();
-    // A disabled button ignores the pointer, so its tooltip sits on a wrapper.
-    const cloneTip = rows(wrapper)[0]
-      .findAll("[title]")
-      .find((el) => el.find("button").exists() && el.text() === "Clone");
-    expect(cloneTip?.attributes("title")).toContain("Coming soon");
+    expect(button(wrapper, "Clone")?.attributes("disabled")).toBeUndefined();
+    expect(button(wrapper, "Clone")?.attributes("title")).toContain("existing git credentials");
+  });
+
+  it("shows a clone's progress, then the bound path", async () => {
+    const clone = deferredClone();
+    const core = mockCore([{ host: "github.com", login: "octocat" }], { clone: clone.run });
+    const wrapper = await mountRepos();
+    await watch(wrapper, "octocat/Hello-World");
+
+    await button(wrapper, "Clone")!.trigger("click");
+    expect(wrapper.get("[role=status]").text()).toBe("Choosing a folder…");
+    clone.report({ phase: "Starting", percent: null });
+    await flushPromises();
+    expect(wrapper.get("[role=status]").text()).toBe("Starting…");
+    clone.report({ phase: "Receiving objects", percent: 45 });
+    await flushPromises();
+    expect(wrapper.get("[role=status]").text()).toBe("Receiving objects 45%");
+    expect(button(wrapper, "Cloning…")?.attributes("disabled")).toBeDefined();
+    expect(button(wrapper, "Bind")?.attributes("disabled")).toBeDefined();
+
+    core.repos[0].local_path = "/Users/me/code/Hello-World";
+    clone.resolve({ ...core.repos[0] });
+    await flushPromises();
+
+    expect(rows(wrapper)[0].text()).toContain("/Users/me/code/Hello-World");
+    expect(wrapper.find("[role=status]").exists()).toBe(false);
+  });
+
+  it("still shows a running clone after leaving the page and coming back", async () => {
+    const clone = deferredClone();
+    const core = mockCore([{ host: "github.com", login: "octocat" }], { clone: clone.run });
+    const pinia = createPinia();
+    const first = await mountRepos(pinia);
+    await watch(first, "octocat/Hello-World");
+    await button(first, "Clone")!.trigger("click");
+    first.unmount();
+
+    const wrapper = await mountRepos(pinia);
+    clone.report({ phase: "Receiving objects", percent: 80 });
+    await flushPromises();
+
+    expect(wrapper.get("[role=status]").text()).toBe("Receiving objects 80%");
+    expect(button(wrapper, "Cloning…")?.attributes("disabled")).toBeDefined();
+
+    core.repos[0].local_path = "/Users/me/code/Hello-World";
+    clone.resolve({ ...core.repos[0] });
+    await flushPromises();
+    expect(rows(wrapper)[0].text()).toContain("/Users/me/code/Hello-World");
+  });
+
+  it("shows why a clone failed, and can try again", async () => {
+    const answers: Array<() => unknown> = [
+      () => {
+        throw { kind: "folder_exists", message: "/code/Hello-World already exists." };
+      },
+      () => null,
+    ];
+    mockCore([{ host: "github.com", login: "octocat" }], { clone: () => answers.shift()!() });
+    const wrapper = await mountRepos();
+    await watch(wrapper, "octocat/Hello-World");
+
+    await button(wrapper, "Clone")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.get("[role=alert]").text()).toBe("/code/Hello-World already exists.");
+    expect(button(wrapper, "Bind")?.attributes("disabled")).toBeUndefined();
+
+    // The second time, the picker is cancelled.
+    await button(wrapper, "Clone")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
+    expect(button(wrapper, "Clone")?.attributes("disabled")).toBeUndefined();
   });
 
   it("binds a repo to the clone picked and shows its path instead of Bind and Clone", async () => {
