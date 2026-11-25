@@ -881,6 +881,7 @@ dependencies = [
 name = "docent-git"
 version = "0.1.0"
 dependencies = [
+ "rustix",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",

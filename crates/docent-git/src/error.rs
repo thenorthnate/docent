@@ -21,6 +21,8 @@ pub enum GitError {
     OutsideWorktrees(String),
     #[error("Docent couldn't delete the leftover folder at {path}: {why}")]
     ClearFailed { path: String, why: String },
+    #[error("Docent couldn't measure the worktree at {path}: {why}")]
+    MeasureFailed { path: String, why: String },
     #[error("git failed: {0}")]
     Failed(String),
 }
@@ -46,6 +48,7 @@ impl GitError {
             Self::InvalidPath(_) => "invalid_path",
             Self::OutsideWorktrees(_) => "outside_worktrees",
             Self::ClearFailed { .. } => "clear_failed",
+            Self::MeasureFailed { .. } => "measure_failed",
             Self::Failed(_) => "git_failed",
         }
     }

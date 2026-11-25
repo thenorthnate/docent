@@ -489,7 +489,7 @@ Each milestone is a set of short-lived branches off `main`.
 | **M6** | Explore | Any-ref worktrees, file browser, on-demand lenses, saved findings, self-review, Trace, bookmarks |
 | **M6b** | Projects | Multi-repo view and cross-repo Trace |
 | **Jira** | Ticket writes | Create issue and comment via the agent's MCP server |
-| **M8** | Release 0.1 | GitHub issues from findings, device-flow auth, PAT-in-keychain fallback, clearer `gh` failures (tell "not logged in" apart from other errors), login shells beyond bash and zsh (fish), custom app icon, `release-please`, full OS build matrix, paid signing (macOS notarized, Windows signed, Linux AppImage/deb/rpm), auto-update, OS sandbox decision, docs site, contributor guide |
+| **M8** | Release 0.1 | GitHub issues from findings, device-flow auth, PAT-in-keychain fallback, clearer `gh` failures (tell "not logged in" apart from other errors), login shells beyond bash and zsh (fish), custom app icon, `release-please`, full OS build matrix (Windows needs its own worktree deletion and disk measurement: `docent-git` uses Unix directory handles and block counts), paid signing (macOS notarized, Windows signed, Linux AppImage/deb/rpm), auto-update, OS sandbox decision, docs site, contributor guide |
 | **0.2** | GitLab | Forge implementation |
 
 **M0.5 gate:** M1 can't start until the Explain answer is useful on real work code and you decide it's worth continuing. If Kiro is blocked, swap the `AgentBackend` implementation or get the waiver first. If Explain isn't useful without ticket text, fix the Jira path before M1.

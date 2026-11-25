@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use docent_git::Git;
+use docent_git::{Git, WorktreesRoot};
 use docent_store::{Store, WatchedRepo};
 
 use crate::command_error::CommandError;
@@ -36,11 +36,9 @@ pub async fn open(
     let clone = git
         .check_clone(Path::new(local_path), &repo.host, &repo.owner, &repo.name)
         .await?;
-    let dest = worktrees
-        .join(repo.id.to_string())
-        .join(format!("pr-{number}"));
+    let dest = WorktreesRoot::new(worktrees).pr(repo.id, number);
     let opened = git
-        .open_pr_worktree(&clone.path, &clone.remote, number, worktrees, &dest)
+        .open_pr_worktree(&clone.path, &clone.remote, &dest)
         .await?;
     Ok(OpenedPr::Ready {
         path: opened.path.display().to_string(),

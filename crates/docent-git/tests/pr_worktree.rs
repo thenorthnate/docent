@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use docent_git::Git;
+use docent_git::{Git, PrWorktreePath, WorktreesRoot};
 
 fn git() -> Git {
     Git::new(std::env::var_os("PATH").expect("tests run with a PATH"))
@@ -98,8 +98,13 @@ impl Fixture {
         );
     }
 
+    /// Where PR `number` of repo 1 goes.
+    fn dest(&self, number: u64) -> PrWorktreePath {
+        WorktreesRoot::new(&self.data).pr(1, number)
+    }
+
     fn worktree(&self, number: u64) -> PathBuf {
-        self.data.join(format!("pr-{number}"))
+        self.dest(number).path().to_path_buf()
     }
 
     /// Everything about the clone a user would notice changing.
@@ -127,7 +132,7 @@ async fn opening_a_pr_creates_a_detached_worktree_at_its_head() {
     let before = f.user_state();
 
     let opened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
 
@@ -154,7 +159,7 @@ async fn reopening_after_a_force_push_moves_the_worktree_and_keeps_the_old_head(
     let first = f.commit("feature.txt", "first\n");
     f.publish_pr(7, &first);
     git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
     // Rewrite history: the new head doesn't contain the old one.
@@ -164,7 +169,7 @@ async fn reopening_after_a_force_push_moves_the_worktree_and_keeps_the_old_head(
     let before = f.user_state();
 
     let reopened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("reopens");
 
@@ -197,13 +202,13 @@ async fn reopening_an_unchanged_pr_reuses_its_worktree() {
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
     let git = git();
-    let dest = f.worktree(7);
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+    let dest = f.dest(7);
+    git.open_pr_worktree(&f.clone, "origin", &dest)
         .await
         .expect("opens");
 
     let reopened = git
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+        .open_pr_worktree(&f.clone, "origin", &dest)
         .await
         .expect("reopens");
 
@@ -218,14 +223,14 @@ async fn a_deleted_worktree_folder_is_recreated() {
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
     let git = git();
-    let dest = f.worktree(7);
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+    let dest = f.dest(7);
+    git.open_pr_worktree(&f.clone, "origin", &dest)
         .await
         .expect("opens");
-    std::fs::remove_dir_all(&dest).expect("delete the worktree folder");
+    std::fs::remove_dir_all(dest.path()).expect("delete the worktree folder");
 
     let reopened = git
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+        .open_pr_worktree(&f.clone, "origin", &dest)
         .await
         .expect("reopens");
 
@@ -260,14 +265,14 @@ async fn opening_a_pr_runs_none_of_the_clones_configured_commands() {
     let first = f.commit("feature.txt", "first\n");
     f.publish_pr(7, &first);
     let git = git();
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
     // The re-open path checks out inside the worktree.
     let second = f.commit("more.txt", "more\n");
     f.publish_pr(7, &second);
 
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("reopens");
 
@@ -293,7 +298,7 @@ async fn a_configured_pull_refspec_does_not_touch_the_users_refs() {
     let before = f.user_state();
 
     git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
 
@@ -317,7 +322,7 @@ async fn a_pr_head_already_checked_out_on_a_user_branch_still_opens() {
     let before = f.user_state();
 
     let opened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
 
@@ -346,17 +351,17 @@ async fn removing_a_pr_worktree_deletes_its_folder_registration_and_pins() {
     f.publish_pr(7, &seven);
     let seventy = f.commit("seventy.txt", "70\n");
     f.publish_pr(70, &seventy);
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens 7");
-    git.open_pr_worktree(&f.clone, "origin", 70, &f.data, &f.worktree(70))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(70))
         .await
         .expect("opens 70");
     let before = f.user_state();
 
     // Removing twice is a no-op the second time.
     for _ in 0..2 {
-        git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        git.remove_pr_worktree(&f.clone, "origin", &f.dest(7))
             .await
             .expect("removes");
     }
@@ -383,13 +388,13 @@ async fn removing_a_worktree_whose_folder_is_gone_drops_its_registration() {
     let git = git();
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
     std::fs::remove_dir_all(f.worktree(7)).expect("delete the folder");
 
     for _ in 0..2 {
-        git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        git.remove_pr_worktree(&f.clone, "origin", &f.dest(7))
             .await
             .expect("removes");
     }
@@ -399,6 +404,26 @@ async fn removing_a_worktree_whose_folder_is_gone_drops_its_registration() {
     assert_eq!(docent_refs(&f.clone), "");
 }
 
+/// Paths whose folders on disk are symlinks to `mine`: repo 1's PR 7 is one,
+/// and repo 8's whole folder leads to the parent of `mine`, named `pr-7`.
+#[cfg(unix)]
+fn symlinked_dests(f: &Fixture, mine: &Path) -> Vec<PrWorktreePath> {
+    use std::os::unix::fs::symlink;
+
+    std::fs::create_dir_all(f.data.join("1")).expect("repo folder");
+    symlink(mine, f.worktree(7)).expect("symlink");
+    symlink(mine.parent().unwrap(), f.data.join("8")).expect("symlink");
+    vec![f.dest(7), WorktreesRoot::new(&f.data).pr(8, 7)]
+}
+
+/// A worktree's path comes from its repo id and PR number alone.
+#[test]
+fn worktree_paths_are_derived_inside_the_root() {
+    let dest = WorktreesRoot::new(Path::new("/data/worktrees")).pr(3, 7);
+
+    assert_eq!(dest.path(), Path::new("/data/worktrees/3/pr-7"));
+}
+
 /// Removal deletes folders, so it only ever acts inside Docent's worktrees
 /// folder: never the user's own worktree, however the path reaches it.
 #[cfg(unix)]
@@ -406,7 +431,7 @@ async fn removing_a_worktree_whose_folder_is_gone_drops_its_registration() {
 async fn removing_refuses_any_path_outside_the_worktrees_folder() {
     let f = Fixture::new();
     let git = git();
-    let mine = f.data.parent().unwrap().join("mine");
+    let mine = f.data.parent().unwrap().join("pr-7");
     sh_git(
         &f.clone,
         &[
@@ -419,24 +444,15 @@ async fn removing_refuses_any_path_outside_the_worktrees_folder() {
         ],
     );
     std::fs::write(mine.join("work.txt"), "unsaved\n").expect("edit");
-    std::fs::create_dir_all(&f.data).expect("data dir");
-    std::os::unix::fs::symlink(&mine, f.data.join("pr-8")).expect("symlink");
-    let base = f.data.parent().unwrap();
-    std::os::unix::fs::symlink(base, f.data.join("up")).expect("symlink");
+    let dests = symlinked_dests(&f, &mine);
     let before = f.user_state();
     let listed_before = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
 
-    for dest in [
-        mine.clone(),
-        f.data.join("..").join("mine"),
-        f.data.join("pr-8"),
-        f.data.join("up").join("mine"),
-        f.data.clone(),
-    ] {
+    for dest in dests {
         let err = git
-            .remove_pr_worktree(&f.clone, "origin", 8, &f.data, &dest)
+            .remove_pr_worktree(&f.clone, "origin", &dest)
             .await
-            .expect_err(&format!("removed {}", dest.display()));
+            .expect_err(&format!("removed {}", dest.path().display()));
         assert_eq!(err.kind(), "outside_worktrees", "{dest:?}: {err}");
     }
 
@@ -448,7 +464,7 @@ async fn removing_refuses_any_path_outside_the_worktrees_folder() {
         sh_git(&f.clone, &["worktree", "list", "--porcelain"]),
         listed_before
     );
-    assert!(f.data.join("pr-8").symlink_metadata().is_ok());
+    assert!(f.worktree(7).symlink_metadata().is_ok());
     assert_eq!(f.user_state(), before, "the user's clone changed");
 }
 
@@ -463,7 +479,7 @@ async fn a_stray_folder_at_the_worktree_path_is_cleared_on_open() {
     std::fs::write(f.worktree(7).join("half-written"), "x").expect("write");
 
     let opened = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
 
@@ -478,7 +494,7 @@ async fn a_stray_folder_at_the_worktree_path_is_cleared_on_remove() {
     std::fs::write(f.worktree(7).join("half-written"), "x").expect("write");
 
     git()
-        .remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .remove_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("removes");
 
@@ -496,7 +512,7 @@ async fn opening_refuses_any_path_outside_the_worktrees_folder() {
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
     let base = f.data.parent().unwrap().to_path_buf();
-    let mine = base.join("mine");
+    let mine = base.join("pr-7");
     sh_git(
         &f.clone,
         &[
@@ -509,28 +525,15 @@ async fn opening_refuses_any_path_outside_the_worktrees_folder() {
         ],
     );
     std::fs::write(mine.join("work.txt"), "unsaved\n").expect("edit");
-    let elsewhere = base.join("elsewhere");
-    std::fs::create_dir_all(&elsewhere).expect("folder");
-    std::fs::write(elsewhere.join("keep.txt"), "mine\n").expect("write");
-    std::fs::create_dir_all(&f.data).expect("data dir");
-    std::os::unix::fs::symlink(&mine, f.data.join("pr-8")).expect("symlink");
-    std::os::unix::fs::symlink(&base, f.data.join("up")).expect("symlink");
+    let dests = symlinked_dests(&f, &mine);
     let before = f.user_state();
     let listed_before = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
 
-    for dest in [
-        mine.clone(),
-        elsewhere.clone(),
-        base.join("new"),
-        f.data.join("..").join("elsewhere"),
-        f.data.join("pr-8"),
-        f.data.join("up").join("elsewhere"),
-        f.data.clone(),
-    ] {
+    for dest in dests {
         let err = git
-            .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+            .open_pr_worktree(&f.clone, "origin", &dest)
             .await
-            .expect_err(&format!("opened at {}", dest.display()));
+            .expect_err(&format!("opened at {}", dest.path().display()));
         assert_eq!(err.kind(), "outside_worktrees", "{dest:?}: {err}");
     }
 
@@ -538,11 +541,6 @@ async fn opening_refuses_any_path_outside_the_worktrees_folder() {
         std::fs::read_to_string(mine.join("work.txt")).unwrap(),
         "unsaved\n"
     );
-    assert_eq!(
-        std::fs::read_to_string(elsewhere.join("keep.txt")).unwrap(),
-        "mine\n"
-    );
-    assert!(!base.join("new").exists(), "a worktree was made outside");
     assert_eq!(
         sh_git(&f.clone, &["worktree", "list", "--porcelain"]),
         listed_before
@@ -560,12 +558,12 @@ async fn removing_deletes_only_its_own_remotes_pins() {
     let git = git();
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
     let pins = docent_refs(&f.clone);
 
-    git.remove_pr_worktree(&f.clone, "o*", 7, &f.data, &f.data.join("pr-x"))
+    git.remove_pr_worktree(&f.clone, "o*", &WorktreesRoot::new(&f.data).pr(2, 7))
         .await
         .expect("removes");
 
@@ -583,7 +581,7 @@ async fn removing_a_pr_runs_none_of_the_clones_configured_commands() {
     let head = f.commit("feature.txt", "new\n");
     f.publish_pr(7, &head);
     let git = git();
-    git.open_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("opens");
     let marker = f.data.parent().unwrap().join("PWNED");
@@ -603,7 +601,7 @@ async fn removing_a_pr_runs_none_of_the_clones_configured_commands() {
     );
     sh_git(&f.clone, &["config", "gc.auto", "1"]);
 
-    git.remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+    git.remove_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect("removes");
 
@@ -625,7 +623,7 @@ async fn a_stray_folder_that_cannot_be_cleared_says_so() {
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).expect("chmod");
 
     let err = git()
-        .remove_pr_worktree(&f.clone, "origin", 7, &f.data, &f.worktree(7))
+        .remove_pr_worktree(&f.clone, "origin", &f.dest(7))
         .await
         .expect_err("cleared a read-only folder");
 
@@ -640,13 +638,276 @@ async fn a_non_utf8_worktree_path_is_reported_as_invalid() {
     use std::os::unix::ffi::OsStrExt;
 
     let f = Fixture::new();
-    let dest = f.data.join(std::ffi::OsStr::from_bytes(b"pr-\xff"));
+    let root = f.data.join(std::ffi::OsStr::from_bytes(b"data-\xff"));
+    let dest = WorktreesRoot::new(root).pr(1, 7);
 
     let err = git()
-        .open_pr_worktree(&f.clone, "origin", 7, &f.data, &dest)
+        .open_pr_worktree(&f.clone, "origin", &dest)
         .await
         .expect_err("opened at a non-UTF-8 path");
 
     assert_eq!(err.kind(), "invalid_path", "{err}");
     assert_eq!(docent_refs(&f.clone), "", "fetched before refusing");
+}
+
+/// Staying inside the root isn't enough: a repo's folder that is a symlink to
+/// another repo's must not let one reach the other's worktrees.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repo_folder_linked_to_another_repos_is_refused() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    std::fs::create_dir_all(f.worktree(7)).expect("repo 1's folder");
+    std::fs::write(f.worktree(7).join("keep.txt"), "x").expect("write");
+    std::os::unix::fs::symlink(f.data.join("1"), f.data.join("8")).expect("symlink");
+    let dest = WorktreesRoot::new(&f.data).pr(8, 7);
+
+    let removed = git.remove_pr_worktree(&f.clone, "origin", &dest).await;
+    let opened = git.open_pr_worktree(&f.clone, "origin", &dest).await;
+
+    assert_eq!(removed.unwrap_err().kind(), "outside_worktrees");
+    assert_eq!(opened.unwrap_err().kind(), "outside_worktrees");
+    assert!(f.worktree(7).join("keep.txt").exists());
+}
+
+/// The user may delete or move their clone. Its worktrees still take up
+/// space, so they can still be removed.
+#[tokio::test]
+async fn a_worktree_whose_clone_is_gone_can_be_removed() {
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let git = git();
+    git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect("opens");
+    std::fs::remove_dir_all(&f.clone).expect("delete the clone");
+
+    git.remove_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists());
+}
+
+/// A repo's folder swapped for a symlink between the check and the delete
+/// must not lead the delete elsewhere. The swap is raced for real, so a
+/// single pass proves little; many do.
+#[cfg(unix)]
+#[tokio::test]
+async fn swapping_a_folder_for_a_symlink_mid_removal_deletes_nothing_outside() {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let f = Fixture::new();
+    let no_clone = f.data.join("no-clone");
+    let victim = f.data.parent().unwrap().join("victim");
+    let keep = victim.join("pr-7").join("keep.txt");
+    std::fs::create_dir_all(keep.parent().unwrap()).expect("victim");
+    std::fs::write(&keep, "mine\n").expect("write");
+    let (repo, link) = (f.data.join("1"), f.data.join("link"));
+    std::fs::create_dir_all(repo.join("pr-7")).expect("stray folder");
+    std::os::unix::fs::symlink(&victim, &link).expect("symlink");
+    // A read-only repo folder keeps its stray, so every attempt gets as far as
+    // deleting, and only a delete through the symlink can succeed.
+    let mode = std::fs::Permissions::from_mode;
+    std::fs::set_permissions(&repo, mode(0o555)).expect("chmod");
+    let stop = Arc::new(AtomicBool::new(false));
+    let swapper = std::thread::spawn({
+        let (stop, repo, link) = (stop.clone(), repo.clone(), link.clone());
+        move || {
+            while !stop.load(Ordering::Relaxed) {
+                // One atomic step, so the swap fits in the race's tiny window.
+                renameat_with(CWD, &repo, CWD, &link, RenameFlags::EXCHANGE).expect("swap");
+            }
+        }
+    });
+
+    let git = git();
+    let mut attempts = 0;
+    for _ in 0..50_000 {
+        // Any error is fine; deleting `keep` isn't.
+        let result = git
+            .remove_pr_worktree(&no_clone, "origin", &f.dest(7))
+            .await;
+        attempts += u32::from(result.is_err_and(|err| err.kind() == "clear_failed"));
+    }
+    stop.store(true, Ordering::Relaxed);
+    swapper.join().expect("swapper");
+    let real = if link.is_symlink() { repo } else { link };
+    std::fs::set_permissions(real, mode(0o755)).expect("chmod");
+
+    assert!(keep.exists(), "the delete followed the symlink");
+    assert!(
+        attempts > 0,
+        "no delete got past the check, so nothing raced"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn clearing_a_stray_folder_deletes_links_but_not_what_they_point_to() {
+    let f = Fixture::new();
+    let outside = f.data.parent().unwrap().join("outside");
+    std::fs::create_dir_all(&outside).expect("folder");
+    std::fs::write(outside.join("keep.txt"), "mine\n").expect("write");
+    std::fs::create_dir_all(f.worktree(7).join("a/b")).expect("stray folder");
+    std::os::unix::fs::symlink(&outside, f.worktree(7).join("a/b/link")).expect("symlink");
+
+    git()
+        .remove_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists());
+    assert!(outside.join("keep.txt").exists());
+}
+
+/// A PR can commit a symlink to anywhere; what it points to isn't the
+/// worktree's disk use, and a link to a parent must not loop.
+#[cfg(unix)]
+#[test]
+fn disk_use_counts_files_but_follows_no_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let f = Fixture::new();
+    let outside = f.data.parent().unwrap().join("outside");
+    std::fs::create_dir_all(&outside).expect("folder");
+    std::fs::write(outside.join("big"), vec![1; 4_000_000]).expect("write");
+    let worktree = f.worktree(7);
+    std::fs::create_dir_all(worktree.join("src")).expect("worktree");
+    std::fs::write(worktree.join("src/file"), vec![1; 1_000_000]).expect("write");
+    symlink(&outside, worktree.join("dir-link")).expect("symlink");
+    symlink(outside.join("big"), worktree.join("file-link")).expect("symlink");
+    symlink("..", worktree.join("src/loop")).expect("symlink");
+
+    let used = f.dest(7).disk_use().expect("measures");
+
+    assert!((1_000_000..1_200_000).contains(&used), "{used}");
+    assert_eq!(
+        f.dest(8).disk_use(),
+        Ok(0),
+        "a missing worktree uses nothing"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn disk_use_refuses_a_symlinked_worktree() {
+    let f = Fixture::new();
+    let outside = f.data.parent().unwrap().join("outside");
+    std::fs::create_dir_all(&outside).expect("folder");
+
+    for dest in symlinked_dests(&f, &outside) {
+        assert_eq!(dest.disk_use().unwrap_err().kind(), "outside_worktrees");
+    }
+}
+
+/// Something else may be deleting the same folder. Success must still mean
+/// it's gone.
+#[tokio::test]
+async fn clearing_a_folder_being_deleted_elsewhere_only_succeeds_once_it_is_gone() {
+    let f = Fixture::new();
+    let no_clone = f.data.join("no-clone");
+    for _ in 0..30 {
+        let files: Vec<_> = (0..200)
+            .map(|n| f.worktree(7).join(format!("f{n}")))
+            .collect();
+        std::fs::create_dir_all(f.worktree(7)).expect("stray folder");
+        for file in &files {
+            std::fs::write(file, "x").expect("write");
+        }
+        let other = std::thread::spawn(move || {
+            for file in files.iter().rev().step_by(2) {
+                let _ = std::fs::remove_file(file);
+            }
+        });
+
+        let result = git()
+            .remove_pr_worktree(&no_clone, "origin", &f.dest(7))
+            .await;
+
+        let left = f.worktree(7).exists();
+        other.join().expect("other deleter");
+        result.expect("removes");
+        assert!(!left, "reported success with the folder still there");
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn an_immutable_file_is_reported_as_uncleared() {
+    let f = Fixture::new();
+    std::fs::create_dir_all(f.worktree(7)).expect("stray folder");
+    let file = f.worktree(7).join("locked");
+    std::fs::write(&file, "x").expect("write");
+    let chflags = |flag: &str| {
+        let status = Command::new("chflags").arg(flag).arg(&file).status();
+        assert!(status.expect("chflags").success());
+    };
+    chflags("uchg");
+
+    let err = git()
+        .remove_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect_err("cleared an immutable file");
+
+    chflags("nouchg");
+    assert_eq!(err.kind(), "clear_failed", "{err}");
+}
+
+/// A fetch can take minutes. A folder swapped meanwhile for a symlink to the
+/// user's own worktree must not be checked out over.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlink_planted_during_the_fetch_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new();
+    let head = f.commit("feature.txt", "new\n");
+    f.publish_pr(7, &head);
+    let mine = f.data.parent().unwrap().join("mine");
+    let mine_str = mine.to_str().unwrap();
+    sh_git(
+        &f.clone,
+        &["worktree", "add", "--quiet", "-b", "mine", mine_str],
+    );
+    std::fs::write(mine.join("README"), "unsaved\n").expect("edit");
+    std::fs::create_dir_all(f.data.join("1")).expect("repo folder");
+    // The fetch runs this, which plants the symlink and then serves it.
+    let script = f.clone.join(".git/upload-pack.sh");
+    let link = f.worktree(7);
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nln -s '{mine_str}' '{}'\nexec git upload-pack \"$@\"\n",
+            link.display()
+        ),
+    )
+    .expect("write script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    sh_git(
+        &f.clone,
+        &[
+            "config",
+            "remote.origin.uploadpack",
+            script.to_str().unwrap(),
+        ],
+    );
+
+    let err = git()
+        .open_pr_worktree(&f.clone, "origin", &f.dest(7))
+        .await
+        .expect_err("checked out over the user's worktree");
+
+    assert!(link.is_symlink(), "the fetch planted the symlink");
+    assert_eq!(err.kind(), "outside_worktrees", "{err}");
+    assert_eq!(
+        std::fs::read_to_string(mine.join("README")).unwrap(),
+        "unsaved\n"
+    );
 }

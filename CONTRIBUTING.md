@@ -74,6 +74,15 @@ You need Rust (stable), Node 24 or later, pnpm (the version is pinned in `packag
 - **Then the maintainer** reviews and merges.
 - **Dogfooding.** From M3 onward, Docent reviews its own PRs. The repo's lenses will live in `.docent/lenses/`, and this section will be updated in the PR that turns that on.
 
+## After a PR merges
+
+Once the maintainer says a PR is merged, the agent that worked on it cleans up. If a step fails, stop and tell the maintainer rather than forcing it:
+
+1. **Confirm the merge.** `gh pr view <number> --json state` must say `MERGED`, and `git status` must be clean.
+2. **Pull `main`:** `git switch main`, then `git pull --ff-only`.
+3. **Delete the local branch.** PRs are squash-merged, so git doesn't see the branch as merged and `git branch -d` refuses. First check that nothing on it was left out of the merge: the branch tip (`git rev-parse <branch>`) must be the PR's last commit (`gh pr view <number> --json headRefOid`). If they match, run `git branch -D <branch>`, then `git fetch --prune`. If they don't, keep the branch. Leave other branches and worktrees alone.
+4. **Tick tracking issues.** Check that each issue the PR closes is closed (if one is still open, ask the maintainer), and tick it on its milestone's tracking issue. If the PR was only part of an issue, leave that issue open and unticked.
+
 ## Dependencies
 
 The planned building blocks are listed in [`PLAN.md` §3.3](docs/PLAN.md#33-off-the-shelf-building-blocks). Any other crate or npm package needs a short note in the PR saying what it's for, what the alternatives were (including the standard library or an existing dependency), and whether it's maintained and widely used.

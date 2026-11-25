@@ -2,10 +2,11 @@
 //! checked out in detached HEAD in a folder Docent owns, and removed
 //! again along with its pins.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::runner::{NETWORK_TIMEOUT, TIMEOUT};
+use crate::worktrees_root::{PrWorktreePath, resolve};
 use crate::{Git, GitError};
 
 /// Config for every git call here. The clone's own config may name hooks,
@@ -32,18 +33,17 @@ pub struct PrWorktree {
 }
 
 impl Git {
-    /// Fetches PR `number`'s head from `remote` of `clone` and checks it out
-    /// in detached HEAD at `dest`, inside `root`, Docent's worktrees folder.
+    /// Fetches the head of `dest`'s PR from `remote` of `clone` and checks it
+    /// out in detached HEAD at `dest`.
     pub async fn open_pr_worktree(
         &self,
         clone: &Path,
         remote: &str,
-        number: u64,
-        root: &Path,
-        dest: &Path,
+        dest: &PrWorktreePath,
     ) -> Result<PrWorktree, GitError> {
-        check_inside(root, dest)?;
-        let dest_str = utf8(dest)?;
+        dest.check_inside()?;
+        let number = dest.number();
+        let dest_str = utf8(dest.path())?;
         let head_ref = format!("{}head", pull_refs(remote, number));
         let refspec = format!("+refs/pull/{number}/head:{head_ref}");
         self.run_hardened(
@@ -78,11 +78,13 @@ impl Git {
         self.run_hardened(clone, &["update-ref", &pin, &sha], TIMEOUT)
             .await?;
 
-        if self.is_worktree_of(clone, dest).await? {
+        // Again, since the fetch can take minutes.
+        dest.check_inside()?;
+        if self.is_worktree_of(clone, dest.path()).await? {
             // The worktree is Docent's and read-only, so `--force` throws away
             // anything written there rather than refusing to move.
             self.run_hardened(
-                dest,
+                dest.path(),
                 &["checkout", "--quiet", "--detach", "--force", &sha],
                 TIMEOUT,
             )
@@ -90,7 +92,7 @@ impl Git {
         } else {
             // A folder git doesn't list (say, from a crash mid-create) would
             // make `worktree add` fail with "already exists".
-            clear_stray(root, dest)?;
+            dest.clear_stray()?;
             // `--force` re-adds a worktree whose folder was deleted but whose
             // registration remains.
             self.run_hardened(
@@ -103,30 +105,37 @@ impl Git {
             .await?;
         }
         Ok(PrWorktree {
-            path: dest.to_path_buf(),
+            path: dest.path().to_path_buf(),
             head_sha: sha,
         })
     }
 
-    /// Removes PR `number`'s worktree at `dest`, inside `root`, and its
+    /// Removes the worktree at `dest` and its PR's
     /// `refs/docent/<remote>/pull/<number>/*` pins.
     pub async fn remove_pr_worktree(
         &self,
         clone: &Path,
         remote: &str,
-        number: u64,
-        root: &Path,
-        dest: &Path,
+        dest: &PrWorktreePath,
     ) -> Result<(), GitError> {
-        check_inside(root, dest)?;
-        let dest_str = utf8(dest)?;
-        if self.lists_worktree(clone, dest).await? {
+        dest.check_inside()?;
+        // A deleted clone took its registration and pins with it. A moved one
+        // keeps them where Docent can't find them, but the disk space is freed.
+        let clone_exists = clone
+            .try_exists()
+            .map_err(|err| GitError::Failed(format!("{}: {err}", clone.display())))?;
+        if !clone_exists {
+            return dest.clear_stray();
+        }
+        let number = dest.number();
+        let dest_str = utf8(dest.path())?;
+        if self.lists_worktree(clone, dest.path()).await? {
             // `--force`: the worktree is Docent's, so anything written there
             // goes with it.
             self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
                 .await?;
         } else {
-            clear_stray(root, dest)?;
+            dest.clear_stray()?;
         }
         // The trailing slash matches whole path components, so PR 7's pins
         // never include PR 70's.
@@ -187,51 +196,4 @@ fn pull_refs(remote: &str, number: u64) -> String {
 fn utf8(path: &Path) -> Result<&str, GitError> {
     path.to_str()
         .ok_or_else(|| GitError::InvalidPath(path.display().to_string()))
-}
-
-/// `path` with symlinks resolved, as far as it exists: a missing last
-/// component is kept as given.
-fn resolve(path: &Path) -> Option<PathBuf> {
-    if let Ok(path) = path.canonicalize() {
-        return Some(path);
-    }
-    Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?))
-}
-
-/// Refuses a `dest` that isn't strictly inside `root`, so nothing outside
-/// Docent's worktrees folder is ever removed: not by a `..`, not through a
-/// symlink, and not `root` itself.
-fn check_inside(root: &Path, dest: &Path) -> Result<(), GitError> {
-    let refuse = || Err(GitError::OutsideWorktrees(dest.display().to_string()));
-    let lexically_inside = dest.starts_with(root)
-        && dest != root
-        && !dest.components().any(|c| c == Component::ParentDir);
-    let is_symlink = dest
-        .symlink_metadata()
-        .is_ok_and(|meta| meta.file_type().is_symlink());
-    if !lexically_inside || is_symlink {
-        return refuse();
-    }
-    // A symlinked folder on the way may still lead outside. A `dest` that
-    // doesn't resolve has no folder to remove.
-    if let Some(resolved) = resolve(dest) {
-        match resolve(root) {
-            Some(root) if resolved.starts_with(&root) && resolved != root => {}
-            _ => return refuse(),
-        }
-    }
-    Ok(())
-}
-
-/// Deletes a folder at `dest` that git doesn't list as a worktree, once
-/// [`check_inside`] allows it.
-fn clear_stray(root: &Path, dest: &Path) -> Result<(), GitError> {
-    if dest.symlink_metadata().is_err() {
-        return Ok(());
-    }
-    check_inside(root, dest)?;
-    std::fs::remove_dir_all(dest).map_err(|err| GitError::ClearFailed {
-        path: dest.display().to_string(),
-        why: err.to_string(),
-    })
 }

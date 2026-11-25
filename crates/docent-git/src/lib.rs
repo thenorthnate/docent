@@ -6,8 +6,10 @@ mod error;
 mod remote;
 mod runner;
 mod worktree;
+mod worktrees_root;
 
 pub use clone::BoundClone;
 pub use error::GitError;
 pub use runner::Git;
 pub use worktree::PrWorktree;
+pub use worktrees_root::{PrWorktreePath, WorktreesRoot};
