@@ -6,6 +6,7 @@ import { createMemoryHistory } from "vue-router";
 import App from "@/App.vue";
 import { createAppRouter } from "@/router";
 import type { ChangedFile, FileDiff } from "@/lib/review";
+import { useReviewStore } from "@/stores/review";
 
 const BASE = "b".repeat(40);
 const HEAD = "a".repeat(40);
@@ -21,8 +22,12 @@ const file = (path: string, old_blob: string | null, new_blob: string | null): C
   new_blob,
 });
 
-// Two names that aren't UTF-8 and look the same once their bad bytes are replaced.
-const FILES = [file("bad\u{fffd}.txt", "1".repeat(40), "2".repeat(40)), file("bad\u{fffd}.txt", null, "3".repeat(40))];
+// Two names that aren't UTF-8 and look the same once their bad bytes are replaced, then a submodule.
+const FILES = [
+  file("bad\u{fffd}.txt", "1".repeat(40), "2".repeat(40)),
+  file("bad\u{fffd}.txt", null, "3".repeat(40)),
+  file("vendored-lib", null, null),
+];
 
 const TEXT: FileDiff = {
   kind: "text",
@@ -45,7 +50,7 @@ async function mountApp(diff: (args: Args) => unknown) {
       case "pull_overview":
         return { title: "Fix", author: "mona", body: null, base_sha: BASE, ci: "passing", checks: [], timeline: [], timeline_truncated: false };
       case "changed_files":
-        return FILES;
+        return FILES.map((f) => ({ ...f }));
       case "file_diff":
         asked.push(args as Args);
         return diff(args as Args);
@@ -55,13 +60,14 @@ async function mountApp(diff: (args: Args) => unknown) {
   const router = createAppRouter(createMemoryHistory());
   await router.push(PR_PATH);
   await router.isReady();
-  const wrapper = mount(App, { global: { plugins: [createPinia(), router] }, attachTo: document.body });
+  const pinia = createPinia();
+  const wrapper = mount(App, { global: { plugins: [pinia, router] }, attachTo: document.body });
   await flushPromises();
   const select = async (index: number) => {
     await wrapper.get("[data-testid=drawer]").findAll("button[title]")[index].trigger("click");
     await flushPromises();
   };
-  return { wrapper, asked, select, viewer: () => wrapper.get("[data-testid=diff-viewer]") };
+  return { wrapper, asked, select, store: useReviewStore(pinia), viewer: () => wrapper.get("[data-testid=diff-viewer]") };
 }
 
 enableAutoUnmount(afterEach);
@@ -98,7 +104,7 @@ describe("DiffViewer", () => {
     await select(0);
     expect(viewer().text()).toBe("Binary file not shown.");
     await select(1);
-    expect(viewer().text()).toBe("Too large to show (6.2 MB).");
+    expect(viewer().text()).toBe("Too large to show (6.2 MiB).");
     expect(viewer().find(".cm-editor").exists()).toBe(false);
   });
 
@@ -130,5 +136,34 @@ describe("DiffViewer", () => {
     await flushPromises();
 
     expect(viewer().get(".cm-content").text()).toBe("second");
+  });
+
+  it("says when a submodule's change can't be shown, without asking the core", async () => {
+    const { asked, select, viewer } = await mountApp(() => TEXT);
+
+    await select(2);
+
+    expect(asked).toEqual([]);
+    expect(viewer().text()).toBe("Submodule change not shown.");
+  });
+
+  it("says when a file's contents didn't change, as in a pure rename", async () => {
+    const { select, viewer } = await mountApp(() => ({ kind: "text", old: "same\n", new: "same\n", hunks: [] }));
+
+    await select(0);
+
+    expect(viewer().get("[data-testid=diff-note]").text()).toBe("Contents unchanged.");
+    expect(viewer().get(".cm-content").text()).toBe("same");
+  });
+
+  it("keeps the selected file when the list is read again", async () => {
+    const { select, store, viewer } = await mountApp(() => TEXT);
+    await select(1);
+
+    await store.load();
+    await flushPromises();
+
+    expect(store.currentFile).toEqual(FILES[1]);
+    expect(viewer().find(".cm-content").exists()).toBe(true);
   });
 });

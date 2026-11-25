@@ -7,7 +7,7 @@ import { EditorView, lineNumbers } from "@codemirror/view";
 import { Button } from "@/components/ui/button";
 import { gitDiffView } from "@/lib/gitChunks";
 import { messageOf } from "@/lib/ipc";
-import type { FileDiff } from "@/lib/review";
+import type { ChangedFile, FileDiff } from "@/lib/review";
 import { useReviewStore } from "@/stores/review";
 
 const review = useReviewStore();
@@ -26,7 +26,7 @@ async function load() {
   diff.value = null;
   error.value = null;
   const file = currentFile.value;
-  if (!range.value || !file) return;
+  if (!range.value || !file || isSubmodule(file)) return;
   try {
     const blobs = { old_blob: file.old_blob, new_blob: file.new_blob };
     const found = await invoke<FileDiff>("file_diff", { range: range.value, blobs });
@@ -53,8 +53,13 @@ watch(
 
 onBeforeUnmount(() => editor?.destroy());
 
-function megabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function mebibytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+/** A changed file with a blob on neither side: the core lists a submodule's commits that way. */
+function isSubmodule(file: ChangedFile): boolean {
+  return file.old_blob === null && file.new_blob === null;
 }
 </script>
 
@@ -68,6 +73,12 @@ function megabytes(bytes: number): string {
       class="text-muted-foreground"
     >
       Select a file to see its changes.
+    </p>
+    <p
+      v-else-if="isSubmodule(currentFile)"
+      class="text-muted-foreground"
+    >
+      Submodule change not shown.
     </p>
     <div
       v-else-if="error"
@@ -103,12 +114,20 @@ function megabytes(bytes: number): string {
       v-else-if="diff.kind === 'too_large'"
       class="text-muted-foreground"
     >
-      Too large to show ({{ megabytes(diff.bytes) }}).
+      Too large to show ({{ mebibytes(diff.bytes) }}).
     </p>
-    <div
-      v-else
-      ref="host"
-      class="overflow-hidden rounded-md border font-mono text-xs"
-    />
+    <template v-else>
+      <p
+        v-if="diff.hunks.length === 0 && currentFile.old_blob && currentFile.new_blob"
+        data-testid="diff-note"
+        class="mb-2 text-muted-foreground"
+      >
+        Contents unchanged.
+      </p>
+      <div
+        ref="host"
+        class="overflow-hidden rounded-md border font-mono text-xs"
+      />
+    </template>
   </div>
 </template>

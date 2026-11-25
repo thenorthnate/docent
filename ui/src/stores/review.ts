@@ -20,9 +20,19 @@ export const useReviewStore = defineStore("review", () => {
   /** `null` until they've loaded. */
   const files = shallowRef<ChangedFile[] | null>(null);
   const error = ref<string | null>(null);
-  /** Held by identity: two names that aren't UTF-8 can read the same. */
   const current = shallowRef<ChangedFile | null>(null);
-  const currentFile = computed(() => (current.value && files.value?.includes(current.value) ? current.value : null));
+  /**
+   * The selected file in the current list, found by path and blobs: two names
+   * that aren't UTF-8 can read the same, but then differ in their blobs, or
+   * have the same diff.
+   */
+  const currentFile = computed(() => {
+    const wanted = current.value;
+    if (!wanted) return null;
+    const same = (file: ChangedFile) =>
+      file.path === wanted.path && file.old_blob === wanted.old_blob && file.new_blob === wanted.new_blob;
+    return files.value?.find(same) ?? null;
+  });
 
   /** Counts loads, so only the latest one started may write its answer. */
   let latest = 0;
