@@ -1,5 +1,6 @@
 mod bind;
 mod command_error;
+mod evict;
 mod inbox;
 mod remember;
 mod review;

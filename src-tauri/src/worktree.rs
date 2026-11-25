@@ -139,4 +139,51 @@ mod tests {
         assert_eq!(err.kind, "not_a_repo");
         assert_eq!(std::fs::read_dir(data.path()).unwrap().count(), 0);
     }
+
+    /// A failed open may still have left something on disk, so it is recorded
+    /// before git starts: here the fetch fails.
+    #[tokio::test]
+    async fn opening_records_the_worktree_and_its_clone() {
+        let store = Store::open_in_memory().await.unwrap();
+        let repo = watched_hello_world(&store).await;
+        let folder = tempfile::tempdir().unwrap();
+        for args in [
+            &["init", "--quiet"][..],
+            &[
+                "remote",
+                "add",
+                "up",
+                "git@github.com:octocat/Hello-World.git",
+            ],
+            &["config", "core.sshCommand", "false"],
+        ] {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(folder.path())
+                .status();
+            assert!(status.expect("run git").success());
+        }
+        let clone = folder.path().canonicalize().unwrap();
+        let clone = clone.to_str().unwrap();
+        store.bind_repo(repo.id, clone).await.unwrap();
+        let data = tempfile::tempdir().unwrap();
+
+        open(
+            &store,
+            &git(),
+            data.path(),
+            "github.com",
+            "octocat",
+            "Hello-World",
+            7,
+        )
+        .await
+        .expect_err("the fetch fails");
+
+        let recorded = store.worktrees().await.unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!((recorded[0].repo_id, recorded[0].number), (repo.id, 7));
+        assert_eq!(recorded[0].clone_path, clone);
+        assert_eq!(recorded[0].remote, "up");
+    }
 }
