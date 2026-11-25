@@ -42,6 +42,21 @@ pub struct SavedAccount {
     pub login: String,
 }
 
+/// A PR worktree Docent created.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct RecordedWorktree {
+    pub repo_id: RepoId,
+    #[sqlx(try_from = "i64")]
+    pub number: u64,
+    /// The clone it came from, whatever the repo is bound to now.
+    pub clone_path: String,
+    /// The remote of that clone its PR was fetched from.
+    pub remote: String,
+}
+
+/// How many bytes PR worktrees may use until the user chooses.
+pub const DEFAULT_WORKTREE_CAP: u64 = 10_000_000_000;
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum StoreError {
     #[error("{0} is already watched.")]
@@ -272,6 +287,37 @@ impl Store {
             return Err(StoreError::RepoNotFound(id));
         }
         self.watched_repo(id).await
+    }
+
+    /// Records that PR `number`'s worktree is being opened now, from `remote`
+    /// of the clone at `clone_path`.
+    pub async fn record_worktree(
+        &self,
+        _repo: RepoId,
+        _number: u64,
+        _clone_path: &str,
+        _remote: &str,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// The recorded worktrees, least recently opened first.
+    pub async fn worktrees(&self) -> Result<Vec<RecordedWorktree>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Drops a worktree's record, once it is removed.
+    pub async fn forget_worktree(&self, _repo: RepoId, _number: u64) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// How many bytes PR worktrees may use.
+    pub async fn worktree_cap(&self) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    pub async fn set_worktree_cap(&self, _bytes: u64) -> Result<(), StoreError> {
+        Ok(())
     }
 
     async fn repo(&self, id: RepoId) -> Result<WatchedRepo, StoreError> {
