@@ -3,12 +3,14 @@ import { createPinia } from "pinia";
 import { createWebHashHistory } from "vue-router";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
-import { followSystemTheme } from "./theme";
+import { createThemeSetting, themeSettingKey } from "./theme";
 import "./style.css";
 
-followSystemTheme();
+// Applied before mounting, so the first paint already has the chosen theme.
+const theme = createThemeSetting();
 
 createApp(App)
+  .provide(themeSettingKey, theme)
   .use(createAppRouter(createWebHashHistory()))
   .use(createPinia())
   .mount("#app");

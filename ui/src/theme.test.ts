@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createThemeSetting, followSystemTheme, THEME_STORAGE_KEY } from "./theme";
 
 /** A stand-in for `matchMedia("(prefers-color-scheme: dark)")` we can flip. */
@@ -107,8 +107,11 @@ describe("createThemeSetting", () => {
 
     expect(theme.choice.value).toBe("system");
     expect(root.classList.contains("dark")).toBe(true);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     theme.set("light");
     expect(root.classList.contains("dark")).toBe(false);
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
   });
 
   it("switches between choices, saving each and stopping or resuming OS-following", () => {
