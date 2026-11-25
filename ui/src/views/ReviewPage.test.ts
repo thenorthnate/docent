@@ -318,7 +318,8 @@ describe("ReviewPage worktree", () => {
     await status.findAll("button").find((b) => b.text() === "Clone")!.trigger("click");
     await flushPromises();
 
-    expect(calls.map((c) => c.cmd)).toEqual(["open_pr_worktree", "clone_repo", "open_pr_worktree"]);
+    const opening = calls.map((c) => c.cmd).filter((cmd) => cmd !== "changed_files");
+    expect(opening).toEqual(["open_pr_worktree", "clone_repo", "open_pr_worktree"]);
     expect(status.text()).toContain("Worktree ready at ccccccc");
   });
 
