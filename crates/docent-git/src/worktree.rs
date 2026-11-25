@@ -25,6 +25,9 @@ const NO_REPO_COMMANDS: [&str; 10] = [
     "submodule.recurse=false",
 ];
 
+/// Long enough to delete a very large worktree.
+const REMOVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 /// A PR's worktree, checked out at its head.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrWorktree {
@@ -130,10 +133,19 @@ impl Git {
         let number = dest.number();
         let dest_str = utf8(dest.path())?;
         if self.lists_worktree(clone, dest.path()).await? {
-            // `--force`: the worktree is Docent's, so anything written there
-            // goes with it.
-            self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
-                .await?;
+            // `--force` twice: the worktree is Docent's, so anything written
+            // there goes with it, even if a crash left it locked.
+            let remove = ["worktree", "remove", "--force", "--force", dest_str];
+            if self
+                .run_hardened(clone, &remove, REMOVE_TIMEOUT)
+                .await
+                .is_err()
+            {
+                // git won't remove a damaged worktree, but it will drop the
+                // registration of one whose folder is gone.
+                dest.clear_stray()?;
+                self.run_hardened(clone, &remove, TIMEOUT).await?;
+            }
         } else {
             dest.clear_stray()?;
         }
