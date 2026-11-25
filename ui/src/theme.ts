@@ -41,6 +41,15 @@ export interface ThemeSetting {
   set(choice: ThemeChoice): void;
 }
 
+/**
+ * `localStorage`, looked up on each call: reading `window.localStorage` itself
+ * throws when the webview blocks storage, and the callers catch that.
+ */
+const browserStorage: ThemeStorage = {
+  getItem: (key) => window.localStorage.getItem(key),
+  setItem: (key, value) => window.localStorage.setItem(key, value),
+};
+
 export const themeSettingKey: InjectionKey<ThemeSetting> = Symbol("themeSetting");
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -64,7 +73,7 @@ function readChoice(storage: ThemeStorage): ThemeChoice {
 export function createThemeSetting({
   root = document.documentElement,
   query = window.matchMedia("(prefers-color-scheme: dark)"),
-  storage = window.localStorage,
+  storage = browserStorage,
 }: { root?: HTMLElement; query?: DarkQuery; storage?: ThemeStorage } = {}): ThemeSetting {
   const choice = ref<ThemeChoice>(readChoice(storage));
   let stopFollowing: (() => void) | null = null;
