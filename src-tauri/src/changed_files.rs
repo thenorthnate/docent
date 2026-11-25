@@ -41,7 +41,9 @@ pub async fn changed_files(
         .await?;
     let dest = WorktreesRoot::new(worktrees).pr(repo.id, range.number);
     let (base, head) = (&range.base_sha, &range.head_sha);
-    Ok(git.changed_files(&clone.remote, &dest, base, head).await?)
+    Ok(git
+        .changed_files(&clone.path, &clone.remote, &dest, base, head)
+        .await?)
 }
 
 #[cfg(test)]

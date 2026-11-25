@@ -100,7 +100,7 @@ impl Fixture {
 
     async fn changed(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>, GitError> {
         git()
-            .changed_files("origin", &self.dest(), base, head)
+            .changed_files(&self.clone, "origin", &self.dest(), base, head)
             .await
     }
 }
@@ -301,6 +301,21 @@ async fn a_worktree_that_is_gone_says_so() {
     let f = Fixture::new(&[("a.txt", b"a\n")]);
 
     let err = f.changed(&f.main(), &f.main()).await.unwrap_err();
+
+    assert_eq!(err.kind(), "worktree_missing");
+}
+
+/// In a plain folder git would go looking for a repo above it, say one the
+/// user keeps their home folder in.
+#[tokio::test]
+async fn a_folder_that_is_not_the_prs_worktree_is_refused() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let head = f.open_pr().await;
+    std::fs::remove_dir_all(f.dest().path()).unwrap();
+    std::fs::create_dir(f.dest().path()).unwrap();
+    sh_git(f.root.path(), &["init", "--quiet"]);
+
+    let err = f.changed(&f.main(), &head).await.unwrap_err();
 
     assert_eq!(err.kind(), "worktree_missing");
 }

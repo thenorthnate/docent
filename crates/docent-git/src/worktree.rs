@@ -182,7 +182,7 @@ impl Git {
     }
 
     /// Whether `dest` is an existing worktree folder of `clone`.
-    async fn is_worktree_of(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
+    pub(crate) async fn is_worktree_of(&self, clone: &Path, dest: &Path) -> Result<bool, GitError> {
         Ok(dest.is_dir() && self.lists_worktree(clone, dest).await?)
     }
 

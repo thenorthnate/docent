@@ -1,6 +1,8 @@
 //! The files a PR changes, from its merge base to its head (PLAN §5.4).
 
-use crate::runner::TIMEOUT;
+use std::path::Path;
+
+use crate::runner::NETWORK_TIMEOUT;
 use crate::worktree::pull_refs;
 use crate::{Git, GitError, PrWorktreePath};
 
@@ -37,10 +39,11 @@ pub struct LineCounts {
 
 impl Git {
     /// The files that change between the merge base of `base_sha` and
-    /// `head_sha`, and `head_sha`, in the open worktree at `dest`. A base the
-    /// clone doesn't have is fetched from `remote` first.
+    /// `head_sha`, and `head_sha`, in `clone`'s open worktree at `dest`. A base
+    /// the clone doesn't have is fetched from `remote` first.
     pub async fn changed_files(
         &self,
+        clone: &Path,
         remote: &str,
         dest: &PrWorktreePath,
         base_sha: &str,
@@ -53,23 +56,28 @@ impl Git {
         }
         dest.check_inside()?;
         let worktree = dest.path();
-        // A missing working directory fails to spawn like a missing `git`
-        // would, so rule it out first.
-        if !worktree.is_dir() {
+        // In any other folder, git would act on whatever repo is above it.
+        if !self.is_worktree_of(clone, worktree).await? {
             return Err(GitError::WorktreeMissing(worktree.display().to_string()));
         }
+        // A partial clone fetches the objects it lacks as each of these asks for
+        // them, so they get as long as a fetch.
         let commit = format!("{base_sha}^{{commit}}");
         if self
-            .run_hardened(worktree, &["cat-file", "-e", &commit], TIMEOUT)
+            .run_hardened(worktree, &["cat-file", "-e", &commit], NETWORK_TIMEOUT)
             .await
             .is_err()
         {
             let base_ref = format!("{}base", pull_refs(remote, dest.number()));
             let refspec = format!("+{base_sha}:{base_ref}");
-            self.fetch_into(worktree, remote, &refspec).await?;
+            self.fetch_into(clone, remote, &refspec).await?;
         }
         let merge_base = self
-            .run_hardened(worktree, &["merge-base", base_sha, head_sha], TIMEOUT)
+            .run_hardened(
+                worktree,
+                &["merge-base", base_sha, head_sha],
+                NETWORK_TIMEOUT,
+            )
             .await?;
         // Plumbing, so the user's `diff.*` display settings don't apply, and
         // attributes in the PR can't pick out a configured diff command.
@@ -86,7 +94,9 @@ impl Git {
             merge_base.trim(),
             head_sha,
         ];
-        let output = self.run_hardened_bytes(dest.path(), &diff, TIMEOUT).await?;
+        let output = self
+            .run_hardened_bytes(dest.path(), &diff, NETWORK_TIMEOUT)
+            .await?;
         parse(&output).ok_or_else(|| GitError::Failed("unexpected diff-tree output".to_string()))
     }
 }
