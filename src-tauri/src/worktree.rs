@@ -5,6 +5,7 @@ use std::path::Path;
 use docent_git::{Git, WorktreesRoot};
 use docent_store::{Store, WatchedRepo};
 
+use crate::bind::storable_path;
 use crate::command_error::CommandError;
 
 /// What opening a PR found, sent to the UI tagged by `status`.
@@ -35,6 +36,11 @@ pub async fn open(
     };
     let clone = git
         .check_clone(Path::new(local_path), &repo.host, &repo.owner, &repo.name)
+        .await?;
+    // Before git starts, so even an open that fails halfway is known to the
+    // disk cap.
+    store
+        .record_worktree(repo.id, number, storable_path(&clone)?, &clone.remote)
         .await?;
     let dest = WorktreesRoot::new(worktrees).pr(repo.id, number);
     let opened = git

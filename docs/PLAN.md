@@ -321,7 +321,7 @@ ACP gives Docent no way to read an agent's settings; Inherit mode works by not o
 
 - Fetch PR heads, including `refs/pull/N/head` for forks, into `refs/docent/*` only. Old SHAs stay reachable for interdiffs after a force-push.
 - Check out in detached HEAD, so your branches stay clean.
-- Delete a worktree when its PR closes or merges, and enforce a disk cap with least-recently-used eviction.
+- Delete a worktree when its PR closes or merges, and enforce a disk cap (10 GB by default, configurable) with least-recently-used eviction. Each open ends with a check in the background; the worktree opened last is never evicted.
 
 ### 5.8 Commenting and submitting reviews (M4)
 
@@ -441,6 +441,8 @@ Built from the start so this doesn't need a rework: `AgentBackend` takes multipl
 ```
 accounts(id, forge, host, login, auth_source, keychain_ref NULL)   -- one login per host; never a token
 repos(id, account_id, owner, name, default_branch, local_path NULL, watched BOOL, profile_id NULL)
+worktrees(repo_id, number, clone_path, remote, last_opened)   -- PR worktrees; the path follows from repo_id + number
+settings(key, value)                                          -- worktree_cap_bytes
 trust(id, repo_id, scope, ref NULL, pr_id NULL, head_sha NULL, granted_at)   -- scope: repo | branch | pr
 pull_requests(id, repo_id, number, title, author, state, is_draft, is_fork, head_sha, base_sha, updated_at, raw_json)
 review_state(pr_id, last_reviewed_sha, last_seen_event_at, viewed_files_json)

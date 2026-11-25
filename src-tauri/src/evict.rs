@@ -11,8 +11,67 @@ use crate::command_error::CommandError;
 /// The most recently opened one always stays. One that can't be measured or
 /// removed is logged and left for next time.
 pub async fn evict(store: &Store, git: &Git, worktrees: &Path) -> Result<(), CommandError> {
-    let _ = (store, git, worktrees);
+    let cap = store.worktree_cap().await?;
+    let root = WorktreesRoot::new(worktrees);
+    let mut measured = Vec::new();
+    for worktree in store.worktrees().await? {
+        let used = disk_use(&root, &worktree).await;
+        measured.push((worktree, used));
+    }
+    let mut total: u64 = measured.iter().map(|(_, used)| used).sum();
+    let Some((_newest, older)) = measured.split_last() else {
+        return Ok(());
+    };
+    for (worktree, used) in older {
+        if total <= cap {
+            break;
+        }
+        match remove(store, git, &root, worktree).await {
+            Ok(()) => total -= used,
+            Err(err) => log(worktree, &err),
+        }
+    }
     Ok(())
+}
+
+/// The bytes `worktree` takes up, or zero if it can't be measured.
+async fn disk_use(root: &WorktreesRoot, worktree: &RecordedWorktree) -> u64 {
+    let dest = root.pr(worktree.repo_id, worktree.number);
+    // Reads the whole tree, so it stays off the async threads.
+    let used = tauri::async_runtime::spawn_blocking(move || dest.disk_use()).await;
+    match used {
+        Ok(Ok(used)) => used,
+        Ok(Err(err)) => {
+            log(worktree, &err.into());
+            0
+        }
+        Err(err) => {
+            eprintln!("Measuring a worktree stopped: {err}");
+            0
+        }
+    }
+}
+
+async fn remove(
+    store: &Store,
+    git: &Git,
+    root: &WorktreesRoot,
+    worktree: &RecordedWorktree,
+) -> Result<(), CommandError> {
+    let dest = root.pr(worktree.repo_id, worktree.number);
+    git.remove_pr_worktree(Path::new(&worktree.clone_path), &worktree.remote, &dest)
+        .await?;
+    store
+        .forget_worktree(worktree.repo_id, worktree.number)
+        .await?;
+    Ok(())
+}
+
+fn log(worktree: &RecordedWorktree, err: &CommandError) {
+    eprintln!(
+        "Evicting PR {} of repo {}: {}",
+        worktree.number, worktree.repo_id, err.message
+    );
 }
 
 #[cfg(test)]

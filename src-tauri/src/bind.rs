@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use docent_git::Git;
+use docent_git::{BoundClone, Git};
 use docent_store::{Store, WatchedRepo};
 
 use crate::command_error::CommandError;
@@ -18,14 +18,18 @@ pub async fn bind(
     let clone = git
         .check_clone(folder, &repo.host, &repo.owner, &repo.name)
         .await?;
-    let path = clone.path.to_str().ok_or_else(|| CommandError {
+    Ok(store.bind_repo(repo.id, storable_path(&clone)?).await?)
+}
+
+/// `clone`'s path as text, since that is how the store keeps it.
+pub(crate) fn storable_path(clone: &BoundClone) -> Result<&str, CommandError> {
+    clone.path.to_str().ok_or_else(|| CommandError {
         kind: "invalid_path",
         message: format!(
             "{} has characters Docent can't store. Move or rename the clone.",
             clone.path.display()
         ),
-    })?;
-    Ok(store.bind_repo(repo.id, path).await?)
+    })
 }
 
 #[cfg(test)]
