@@ -195,6 +195,15 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | Base of a PR's diff | The merge base of the head and GitHub's `baseRefOid`, not the base branch's tip. The branch contains the head once the PR merges, and may be deleted |
 | Listing changed files | `git diff-tree` plumbing with rename detection, so the user's `diff.*` settings don't change the list |
 
+### Added while building Clone (#19)
+
+| Topic | Decision |
+|---|---|
+| Clone URL | Always `https://<host>/<owner>/<name>.git`. Users of ssh redirect it with git's `insteadOf`, which clones and fetches both follow. An ssh host alias doesn't work: the clone's remote must still name the forge host |
+| Clone folder | `<picked folder>/<name>`, created by Docent. An existing folder is refused, even an empty one, so only a folder Docent made is ever deleted after a failure |
+| Time limit | None overall. A clone that prints nothing for 10 minutes is stopped |
+| Hooks | Off while cloning: a relative `core.hooksPath` in the user's config would run the cloned repo's files |
+
 ### Added while designing the review lifecycle
 
 GitHub's `review-requested:@me` drops a PR once you review it, and team requests vanish when a teammate picks them up, so PRs disappeared from the inbox while still needing you. See the review lifecycle in `PLAN.md` 5.2.
