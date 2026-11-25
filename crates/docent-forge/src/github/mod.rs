@@ -3,8 +3,10 @@
 mod details;
 mod overview;
 mod repo_name;
+mod states;
 
 pub(crate) use overview::pull_overview;
+pub(crate) use states::pull_states;
 pub use repo_name::RepoName;
 
 use octocrab::{Octocrab, Page};

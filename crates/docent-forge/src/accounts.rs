@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use crate::github::{self, RepoName};
 use crate::{
-    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, PullOverview, RepoError, Section,
-    SectionPulls, Token,
+    ConnectError, Forge, ForgeRepo, GhCli, Host, HostFailure, PullOverview, PullRef, PullStates,
+    RepoError, Section, SectionPulls, Token,
 };
 
 type ApiBase = Box<dyn Fn(&Host) -> String + Send + Sync>;
@@ -299,5 +299,55 @@ impl Forge for Accounts {
             }
             .into()),
         }
+    }
+
+    async fn pull_states(&self, pulls: &[PullRef]) -> PullStates {
+        let mut by_host: BTreeMap<String, Vec<&PullRef>> = BTreeMap::new();
+        for pull in pulls {
+            by_host.entry(pull.host.clone()).or_default().push(pull);
+        }
+        let mut found = PullStates::default();
+        for (host_name, pulls) in by_host {
+            let fail = |error: ConnectError| HostFailure {
+                host: host_name.clone(),
+                error,
+            };
+            let host = match Host::parse(&host_name) {
+                Ok(host) => host,
+                Err(err) => {
+                    found.failures.push(fail(err));
+                    continue;
+                }
+            };
+            let token = match self.lock().get(&host) {
+                Some(Connection::Connected(account)) => Arc::clone(&account.token),
+                Some(Connection::Failed { error, .. }) => {
+                    found.failures.push(fail(error.clone()));
+                    continue;
+                }
+                None => {
+                    found.failures.push(fail(ConnectError::Unreachable {
+                        host: host_name.clone(),
+                        reason: "it isn't connected".to_string(),
+                    }));
+                    continue;
+                }
+            };
+            let api_base = (self.api_base)(&host);
+            let fetch = github::pull_states(&host, &api_base, &token, &pulls);
+            match tokio::time::timeout(self.request_timeout, fetch).await {
+                Ok(Ok(states)) => found.states.extend(states),
+                Ok(Err(err)) => found.failures.push(fail(err)),
+                Err(_) => found.failures.push(fail(ConnectError::Unreachable {
+                    host: host_name.clone(),
+                    reason: "no answer in time".to_string(),
+                })),
+            }
+        }
+        // Back in the order asked, across hosts.
+        let order: std::collections::HashMap<&PullRef, usize> =
+            pulls.iter().enumerate().map(|(i, pull)| (pull, i)).collect();
+        found.states.sort_by_key(|(pull, _)| order.get(pull).copied());
+        found
     }
 }

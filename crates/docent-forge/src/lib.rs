@@ -18,7 +18,8 @@ pub use error::ConnectError;
 #[cfg(feature = "fake")]
 pub use fake::FakeForge;
 pub use forge::{
-    CiStatus, Forge, HostFailure, PullDetails, PullSummary, ReviewState, Section, SectionPulls,
+    CiStatus, Forge, HostFailure, PullDetails, PullRef, PullState, PullStates, PullSummary,
+    ReviewState, Section, SectionPulls,
 };
 pub use gh::GhCli;
 pub use host::Host;
