@@ -28,9 +28,34 @@ async fn worktrees_are_listed_least_recently_opened_first() {
             .record_worktree(repo, number, "/code/x", "origin")
             .await
             .expect("records");
+        store.touch_worktree(repo, number).await.expect("touches");
     }
 
     assert_eq!(recorded(&store).await, [(a, 7), (a, 8), (b, 9)]);
+}
+
+/// An open that fails is recorded but never touched, so it mustn't look like
+/// the worktree in use.
+#[tokio::test]
+async fn recording_alone_does_not_count_as_opening() {
+    let store = Store::open_in_memory().await.unwrap();
+    let repo = watched(&store, "a").await;
+    for number in [1, 2, 3] {
+        store
+            .record_worktree(repo, number, "/code/x", "origin")
+            .await
+            .unwrap();
+    }
+    for number in [1, 2] {
+        store.touch_worktree(repo, number).await.unwrap();
+    }
+
+    store
+        .record_worktree(repo, 1, "/code/x", "origin")
+        .await
+        .unwrap();
+
+    assert_eq!(recorded(&store).await, [(repo, 3), (repo, 1), (repo, 2)]);
 }
 
 #[tokio::test]

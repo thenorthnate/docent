@@ -318,6 +318,11 @@ impl Store {
         Ok(())
     }
 
+    /// Marks a recorded worktree as opened now.
+    pub async fn touch_worktree(&self, _repo: RepoId, _number: u64) -> Result<(), StoreError> {
+        Ok(())
+    }
+
     /// The recorded worktrees, least recently opened first.
     pub async fn worktrees(&self) -> Result<Vec<RecordedWorktree>, StoreError> {
         let worktrees = sqlx::query_as(

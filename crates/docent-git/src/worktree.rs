@@ -166,6 +166,15 @@ impl Git {
         Ok(())
     }
 
+    /// Removes the worktree at `dest`, leaving its PR's pins.
+    pub async fn evict_pr_worktree(
+        &self,
+        _clone: &Path,
+        _dest: &PrWorktreePath,
+    ) -> Result<(), GitError> {
+        Ok(())
+    }
+
     /// Runs `git <args>` with [`NO_REPO_COMMANDS`] in front.
     async fn run_hardened(
         &self,

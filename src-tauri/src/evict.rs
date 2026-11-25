@@ -159,6 +159,10 @@ mod tests {
                 .open_pr_worktree(&clone, "origin", &dest)
                 .await
                 .expect("opens");
+            self.store
+                .touch_worktree(self.repo, number)
+                .await
+                .expect("touches");
         }
 
         async fn evict_to(&self, cap: u64) {
@@ -255,5 +259,25 @@ mod tests {
         assert_eq!(f.recorded().await, [1, 3], "PR 1 is kept for next time");
         assert!(!f.folder(2).exists());
         assert!(mine.join("big").exists() && f.folder(1).is_symlink());
+    }
+
+    /// PR 1 can't be removed, so evicting the rest can't make up for it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn one_that_cannot_be_removed_does_not_cost_the_others_their_place() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let f = Fixture::new().await;
+        for number in [1, 2, 3] {
+            f.open(number).await;
+        }
+        let locked = f.folder(1);
+        let mode = std::fs::Permissions::from_mode;
+        std::fs::set_permissions(&locked, mode(0o555)).expect("chmod");
+
+        f.evict_to(2_500_000).await;
+
+        std::fs::set_permissions(&locked, mode(0o755)).expect("chmod");
+        assert_eq!(f.recorded().await, [1, 2, 3]);
     }
 }
