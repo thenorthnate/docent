@@ -33,14 +33,21 @@ impl GhCli {
                 _ => ConnectError::GhFailed(err.to_string()),
             })?;
 
-        // gh exits non-zero when it has no token for the host. Its stderr is
+        // gh exits non-zero when it has no token for the host. Its output is
         // not passed on: the hint in `NotLoggedIn` is the actionable part.
         let token = String::from_utf8(output.stdout)
             .ok()
             .map(|out| out.trim().to_string())
             .filter(|token| output.status.success() && !token.is_empty());
-        token
-            .map(Token::new)
-            .ok_or_else(|| ConnectError::NotLoggedIn(host.as_str().to_string()))
+        token.map(Token::new).ok_or_else(|| {
+            // Only the status, never stdout or stderr: either could hold a
+            // token.
+            eprintln!(
+                "gh auth token --hostname {} gave no token: {}",
+                host.as_str(),
+                output.status
+            );
+            ConnectError::NotLoggedIn(host.as_str().to_string())
+        })
     }
 }

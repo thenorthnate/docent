@@ -1,12 +1,14 @@
 mod bind;
 mod changed_files;
 mod command_error;
+mod evict;
 mod inbox;
 mod remember;
 mod review;
 mod shell_env;
 mod watch;
 mod worktree;
+mod worktrees;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -19,6 +21,7 @@ use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::OnceCell;
+use worktrees::{InUse, Worktrees};
 
 /// Process-wide state. Tokens live only in `accounts`, in memory.
 ///
@@ -31,6 +34,7 @@ struct AppState {
     child_path: OnceCell<OsString>,
     /// Set once the remembered hosts have been reconnected (or have failed).
     restored: OnceCell<()>,
+    worktrees_in_use: InUse,
 }
 
 impl AppState {
@@ -167,9 +171,15 @@ async fn open_pr_worktree(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<worktree::OpenedPr, CommandError> {
-    let worktrees = worktrees_folder(&app)?;
-    let git = state.git().await;
-    worktree::open(&store, &git, &worktrees, &host, &owner, &repo, number).await
+    let worktrees = Worktrees {
+        in_use: state.worktrees_in_use.clone(),
+        store: store.inner().clone(),
+        git: state.git().await,
+        root: worktrees_folder(&app)?,
+    };
+    // The eviction carries on in the background.
+    let (opened, _evicting) = worktrees.open(&host, &owner, &repo, number).await;
+    opened
 }
 
 /// The files a PR changes, from its merge base to its head, read from its
