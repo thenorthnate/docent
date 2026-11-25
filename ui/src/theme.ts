@@ -1,3 +1,5 @@
+import { readonly, ref, type InjectionKey, type Ref } from "vue";
+
 /** The parts of a `MediaQueryList` that theme syncing needs. */
 export interface DarkQuery {
   readonly matches: boolean;
@@ -19,4 +21,84 @@ export function followSystemTheme(
   apply(query);
   query.addEventListener("change", apply);
   return () => query.removeEventListener("change", apply);
+}
+
+/** The Appearance setting: follow the OS, or pin light or dark. */
+export type ThemeChoice = "system" | "light" | "dark";
+
+export const THEME_CHOICES: readonly ThemeChoice[] = ["system", "light", "dark"];
+
+/** Where the choice lives in `localStorage`. */
+export const THEME_STORAGE_KEY = "docent.theme";
+
+/** The parts of `Storage` the theme setting needs. */
+export type ThemeStorage = Pick<Storage, "getItem" | "setItem">;
+
+/** The live Appearance setting that `createThemeSetting` returns. */
+export interface ThemeSetting {
+  readonly choice: Readonly<Ref<ThemeChoice>>;
+  /** Applies `choice` now and saves it for the next launch. */
+  set(choice: ThemeChoice): void;
+}
+
+/**
+ * `localStorage`, looked up on each call: reading `window.localStorage` itself
+ * throws when the webview blocks storage, and the callers catch that.
+ */
+const browserStorage: ThemeStorage = {
+  getItem: (key) => window.localStorage.getItem(key),
+  setItem: (key, value) => window.localStorage.setItem(key, value),
+};
+
+export const themeSettingKey: InjectionKey<ThemeSetting> = Symbol("themeSetting");
+
+function isThemeChoice(value: unknown): value is ThemeChoice {
+  return THEME_CHOICES.includes(value as ThemeChoice);
+}
+
+function readChoice(storage: ThemeStorage): ThemeChoice {
+  try {
+    const stored = storage.getItem(THEME_STORAGE_KEY);
+    return isThemeChoice(stored) ? stored : "system";
+  } catch {
+    // Storage can be disabled; the OS theme is a safe default.
+    return "system";
+  }
+}
+
+/**
+ * Applies the stored Appearance choice to `root` straight away, synchronously,
+ * so calling it before Vue mounts avoids a flash of the wrong theme.
+ */
+export function createThemeSetting({
+  root = document.documentElement,
+  query = window.matchMedia("(prefers-color-scheme: dark)"),
+  storage = browserStorage,
+}: { root?: HTMLElement; query?: DarkQuery; storage?: ThemeStorage } = {}): ThemeSetting {
+  const choice = ref<ThemeChoice>(readChoice(storage));
+  let stopFollowing: (() => void) | null = null;
+
+  const apply = () => {
+    stopFollowing?.();
+    stopFollowing = null;
+    if (choice.value === "system") {
+      stopFollowing = followSystemTheme(root, query);
+    } else {
+      root.classList.toggle("dark", choice.value === "dark");
+    }
+  };
+
+  apply();
+  return {
+    choice: readonly(choice),
+    set(next) {
+      choice.value = next;
+      apply();
+      try {
+        storage.setItem(THEME_STORAGE_KEY, next);
+      } catch (error) {
+        console.error("Could not save the theme choice", error);
+      }
+    },
+  };
 }

@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import AccountsSection from "@/components/AccountsSection.vue";
+import AppearanceSection from "@/components/AppearanceSection.vue";
 
 const version = ref<string | null>(null);
 const versionFailed = ref(false);
@@ -29,6 +30,7 @@ onMounted(async () => {
         Docent, version unknown
       </template>
     </p>
+    <AppearanceSection />
     <AccountsSection />
   </div>
 </template>

@@ -127,6 +127,8 @@ Splitting the Rust side into small crates keeps the forge, git and agent logic t
 | Settings files | `tauri-plugin-store` or TOML in app config dir | Simple |
 | Logging | `tracing` + `tauri-plugin-log` | Debuggable agent sessions |
 
+UI-only, per-machine preferences, such as Appearance (System, Light or Dark), live in the webview's `localStorage` instead of the settings files or the store. `localStorage` can be read synchronously before Vue mounts, so the app paints with the right theme from the start; settings read over IPC arrive asynchronously and would need a cache to avoid a flash.
+
 Apps launched from Finder don't inherit your shell's `PATH`, so Docent reads `PATH` from the login shell to find `gh`, `git` and `kiro-cli`. The probe uses POSIX syntax, so a fish login shell falls back to the app's `PATH` plus Homebrew's directories until M8.
 
 ---
