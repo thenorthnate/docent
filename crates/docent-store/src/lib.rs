@@ -293,30 +293,73 @@ impl Store {
     /// of the clone at `clone_path`.
     pub async fn record_worktree(
         &self,
-        _repo: RepoId,
-        _number: u64,
-        _clone_path: &str,
-        _remote: &str,
+        repo: RepoId,
+        number: u64,
+        clone_path: &str,
+        remote: &str,
     ) -> Result<(), StoreError> {
+        // Always later than every other row, even within a millisecond or
+        // after the clock goes back, so the order is the order of use.
+        sqlx::query(
+            "INSERT INTO worktrees (repo_id, number, clone_path, remote, last_opened) \
+             VALUES (?1, ?2, ?3, ?4, MAX( \
+                 CAST(unixepoch('subsec') * 1000 AS INTEGER), \
+                 (SELECT COALESCE(MAX(last_opened), 0) + 1 FROM worktrees))) \
+             ON CONFLICT (repo_id, number) DO UPDATE SET \
+                 clone_path = excluded.clone_path, remote = excluded.remote, \
+                 last_opened = excluded.last_opened",
+        )
+        .bind(repo)
+        .bind(pr_number(number)?)
+        .bind(clone_path)
+        .bind(remote)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     /// The recorded worktrees, least recently opened first.
     pub async fn worktrees(&self) -> Result<Vec<RecordedWorktree>, StoreError> {
-        Ok(Vec::new())
+        let worktrees = sqlx::query_as(
+            "SELECT repo_id, number, clone_path, remote FROM worktrees ORDER BY last_opened",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(worktrees)
     }
 
     /// Drops a worktree's record, once it is removed.
-    pub async fn forget_worktree(&self, _repo: RepoId, _number: u64) -> Result<(), StoreError> {
+    pub async fn forget_worktree(&self, repo: RepoId, number: u64) -> Result<(), StoreError> {
+        sqlx::query("DELETE FROM worktrees WHERE repo_id = ?1 AND number = ?2")
+            .bind(repo)
+            .bind(pr_number(number)?)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
     /// How many bytes PR worktrees may use.
     pub async fn worktree_cap(&self) -> Result<u64, StoreError> {
-        Ok(0)
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM settings WHERE key = 'worktree_cap_bytes'")
+                .fetch_optional(&self.pool)
+                .await?;
+        match value {
+            None => Ok(DEFAULT_WORKTREE_CAP),
+            Some(value) => value.parse().map_err(|_| {
+                StoreError::Database(format!("the worktree disk cap isn't a number: {value}"))
+            }),
+        }
     }
 
-    pub async fn set_worktree_cap(&self, _bytes: u64) -> Result<(), StoreError> {
+    pub async fn set_worktree_cap(&self, bytes: u64) -> Result<(), StoreError> {
+        sqlx::query(
+            "INSERT INTO settings (key, value) VALUES ('worktree_cap_bytes', ?1) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(bytes.to_string())
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -327,4 +370,10 @@ impl Store {
             .await?;
         Ok(repo)
     }
+}
+
+/// SQLite integers are signed. No forge numbers PRs past `i64`.
+fn pr_number(number: u64) -> Result<i64, StoreError> {
+    i64::try_from(number)
+        .map_err(|_| StoreError::Database(format!("PR number {number} is too large")))
 }
