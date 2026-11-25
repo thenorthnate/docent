@@ -911,3 +911,99 @@ async fn a_symlink_planted_during_the_fetch_is_refused() {
         "unsaved\n"
     );
 }
+
+/// git refuses to remove a worktree without its `.git` file (say, after a
+/// removal cut short) and one left locked by a crash while git was creating
+/// it. Either would otherwise take up space for good.
+#[tokio::test]
+async fn half_removed_and_locked_worktrees_can_be_removed() {
+    let f = Fixture::new();
+    let git = git();
+    let head = f.commit("feature.txt", "new\n");
+    for number in [7, 8] {
+        f.publish_pr(number, &head);
+        git.open_pr_worktree(&f.clone, "origin", &f.dest(number))
+            .await
+            .expect("opens");
+    }
+    std::fs::remove_file(f.worktree(7).join(".git")).expect("half remove");
+    let locked = f.worktree(8);
+    sh_git(&f.clone, &["worktree", "lock", locked.to_str().unwrap()]);
+    let before = f.user_state();
+
+    for number in [7, 8] {
+        git.remove_pr_worktree(&f.clone, "origin", &f.dest(number))
+            .await
+            .expect("removes");
+        assert!(!f.worktree(number).exists(), "PR {number} is still there");
+    }
+
+    let listed = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
+    assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
+    assert_eq!(docent_refs(&f.clone), "");
+    assert_eq!(f.user_state(), before, "the user's clone changed");
+}
+
+/// PLAN §5.7: old heads stay reachable for interdiffs, so evicting an open
+/// PR's worktree keeps its pins, including one from before a force-push.
+#[tokio::test]
+async fn evicting_a_worktree_keeps_its_pins() {
+    let f = Fixture::new();
+    let git = git();
+    for contents in ["first\n", "second\n"] {
+        let head = f.commit("feature.txt", contents);
+        f.publish_pr(7, &head);
+        git.open_pr_worktree(&f.clone, "origin", &f.dest(7))
+            .await
+            .expect("opens");
+    }
+    let pins = docent_refs(&f.clone);
+    assert_eq!(pins.lines().count(), 3, "two heads and `head`: {pins}");
+
+    git.evict_pr_worktree(&f.clone, &f.dest(7))
+        .await
+        .expect("evicts");
+
+    assert!(!f.worktree(7).exists());
+    let listed = sh_git(&f.clone, &["worktree", "list", "--porcelain"]);
+    assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
+    assert_eq!(docent_refs(&f.clone), pins);
+}
+
+/// Something else may be at the clone's path by now.
+#[tokio::test]
+async fn a_worktree_whose_clone_is_no_longer_a_repo_can_be_removed() {
+    let f = Fixture::new();
+    let not_a_repo = f.data.parent().unwrap().join("plain");
+    std::fs::create_dir_all(&not_a_repo).expect("folder");
+    std::fs::create_dir_all(f.worktree(7)).expect("worktree");
+
+    git()
+        .remove_pr_worktree(&not_a_repo, "origin", &f.dest(7))
+        .await
+        .expect("removes");
+
+    assert!(!f.worktree(7).exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn evicting_refuses_any_path_outside_the_worktrees_folder() {
+    let f = Fixture::new();
+    let mine = f.data.parent().unwrap().join("pr-7");
+    let mine_str = mine.to_str().unwrap();
+    sh_git(
+        &f.clone,
+        &["worktree", "add", "--quiet", "-b", "mine", mine_str],
+    );
+
+    for dest in symlinked_dests(&f, &mine) {
+        let err = git()
+            .evict_pr_worktree(&f.clone, &dest)
+            .await
+            .expect_err("evicted");
+        assert_eq!(err.kind(), "outside_worktrees", "{dest:?}: {err}");
+    }
+
+    assert!(mine.join("README").exists());
+}

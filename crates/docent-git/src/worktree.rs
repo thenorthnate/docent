@@ -25,6 +25,9 @@ const NO_REPO_COMMANDS: [&str; 10] = [
     "submodule.recurse=false",
 ];
 
+/// Long enough to delete a very large worktree.
+const REMOVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 /// A PR's worktree, checked out at its head.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrWorktree {
@@ -111,35 +114,20 @@ impl Git {
     }
 
     /// Removes the worktree at `dest` and its PR's
-    /// `refs/docent/<remote>/pull/<number>/*` pins.
+    /// `refs/docent/<remote>/pull/<number>/*` pins, for a PR that is done.
     pub async fn remove_pr_worktree(
         &self,
         clone: &Path,
         remote: &str,
         dest: &PrWorktreePath,
     ) -> Result<(), GitError> {
-        dest.check_inside()?;
-        // A deleted clone took its registration and pins with it. A moved one
-        // keeps them where Docent can't find them, but the disk space is freed.
-        let clone_exists = clone
-            .try_exists()
-            .map_err(|err| GitError::Failed(format!("{}: {err}", clone.display())))?;
-        if !clone_exists {
-            return dest.clear_stray();
-        }
-        let number = dest.number();
-        let dest_str = utf8(dest.path())?;
-        if self.lists_worktree(clone, dest.path()).await? {
-            // `--force`: the worktree is Docent's, so anything written there
-            // goes with it.
-            self.run_hardened(clone, &["worktree", "remove", "--force", dest_str], TIMEOUT)
-                .await?;
-        } else {
-            dest.clear_stray()?;
+        self.evict_pr_worktree(clone, dest).await?;
+        if !self.is_repo(clone).await? {
+            return Ok(());
         }
         // The trailing slash matches whole path components, so PR 7's pins
         // never include PR 70's.
-        let pins = pull_refs(remote, number);
+        let pins = pull_refs(remote, dest.number());
         let refs = self
             .run_hardened(
                 clone,
@@ -152,6 +140,54 @@ impl Git {
                 .await?;
         }
         Ok(())
+    }
+
+    /// Removes the worktree at `dest` to free its space. Its PR's pins stay,
+    /// so old heads are still there for interdiffs (PLAN §5.7).
+    pub async fn evict_pr_worktree(
+        &self,
+        clone: &Path,
+        dest: &PrWorktreePath,
+    ) -> Result<(), GitError> {
+        dest.check_inside()?;
+        let dest_str = utf8(dest.path())?;
+        // A deleted clone took its registration and pins with it. A moved one
+        // keeps them where Docent can't find them, but the disk space is freed.
+        if !self.is_repo(clone).await? || !self.lists_worktree(clone, dest.path()).await? {
+            return dest.clear_stray();
+        }
+        // `--force` twice: the worktree is Docent's, so anything written there
+        // goes with it, even if a crash left it locked.
+        let remove = ["worktree", "remove", "--force", "--force", dest_str];
+        if self
+            .run_hardened(clone, &remove, REMOVE_TIMEOUT)
+            .await
+            .is_err()
+        {
+            // git won't remove a damaged worktree, but it will drop the
+            // registration of one whose folder is gone.
+            dest.clear_stray()?;
+            self.run_hardened(clone, &remove, TIMEOUT).await?;
+        }
+        Ok(())
+    }
+
+    /// Whether `clone` is still there and still a git repo.
+    async fn is_repo(&self, clone: &Path) -> Result<bool, GitError> {
+        let exists = clone
+            .try_exists()
+            .map_err(|err| GitError::Failed(format!("{}: {err}", clone.display())))?;
+        if !exists {
+            return Ok(false);
+        }
+        match self
+            .run_hardened(clone, &["rev-parse", "--git-dir"], TIMEOUT)
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(GitError::Failed(why)) if why.contains("not a git repository") => Ok(false),
+            Err(err) => Err(err),
+        }
     }
 
     /// Runs `git <args>` with [`NO_REPO_COMMANDS`] in front.

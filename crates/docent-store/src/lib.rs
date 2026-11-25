@@ -42,6 +42,21 @@ pub struct SavedAccount {
     pub login: String,
 }
 
+/// A PR worktree Docent created.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct RecordedWorktree {
+    pub repo_id: RepoId,
+    #[sqlx(try_from = "i64")]
+    pub number: u64,
+    /// The clone it came from, whatever the repo is bound to now.
+    pub clone_path: String,
+    /// The remote of that clone its PR was fetched from.
+    pub remote: String,
+}
+
+/// How many bytes PR worktrees may use until the user chooses.
+pub const DEFAULT_WORKTREE_CAP: u64 = 10_000_000_000;
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum StoreError {
     #[error("{0} is already watched.")]
@@ -274,6 +289,93 @@ impl Store {
         self.watched_repo(id).await
     }
 
+    /// Records PR `number`'s worktree, about to be opened from `remote` of the
+    /// clone at `clone_path`. Until [`Store::touch_worktree`] it counts as
+    /// never opened, or as last opened when it was before.
+    pub async fn record_worktree(
+        &self,
+        repo: RepoId,
+        number: u64,
+        clone_path: &str,
+        remote: &str,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            "INSERT INTO worktrees (repo_id, number, clone_path, remote) \
+             VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT (repo_id, number) DO UPDATE SET \
+                 clone_path = excluded.clone_path, remote = excluded.remote",
+        )
+        .bind(repo)
+        .bind(pr_number(number)?)
+        .bind(clone_path)
+        .bind(remote)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Marks a recorded worktree as opened now.
+    pub async fn touch_worktree(&self, repo: RepoId, number: u64) -> Result<(), StoreError> {
+        // Always later than every other row, even within a millisecond or
+        // after the clock goes back, so the order is the order of use.
+        sqlx::query(
+            "UPDATE worktrees SET last_opened = MAX( \
+                 CAST(unixepoch('subsec') * 1000 AS INTEGER), \
+                 (SELECT MAX(last_opened) + 1 FROM worktrees)) \
+             WHERE repo_id = ?1 AND number = ?2",
+        )
+        .bind(repo)
+        .bind(pr_number(number)?)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// The recorded worktrees, least recently opened first.
+    pub async fn worktrees(&self) -> Result<Vec<RecordedWorktree>, StoreError> {
+        let worktrees = sqlx::query_as(
+            "SELECT repo_id, number, clone_path, remote FROM worktrees ORDER BY last_opened",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(worktrees)
+    }
+
+    /// Drops a worktree's record, once it is removed.
+    pub async fn forget_worktree(&self, repo: RepoId, number: u64) -> Result<(), StoreError> {
+        sqlx::query("DELETE FROM worktrees WHERE repo_id = ?1 AND number = ?2")
+            .bind(repo)
+            .bind(pr_number(number)?)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// How many bytes PR worktrees may use.
+    pub async fn worktree_cap(&self) -> Result<u64, StoreError> {
+        let value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM settings WHERE key = 'worktree_cap_bytes'")
+                .fetch_optional(&self.pool)
+                .await?;
+        match value {
+            None => Ok(DEFAULT_WORKTREE_CAP),
+            Some(value) => value.parse().map_err(|_| {
+                StoreError::Database(format!("the worktree disk cap isn't a number: {value}"))
+            }),
+        }
+    }
+
+    pub async fn set_worktree_cap(&self, bytes: u64) -> Result<(), StoreError> {
+        sqlx::query(
+            "INSERT INTO settings (key, value) VALUES ('worktree_cap_bytes', ?1) \
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(bytes.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     async fn repo(&self, id: RepoId) -> Result<WatchedRepo, StoreError> {
         let repo = sqlx::query_as(select_repo!("WHERE repos.id = ?1"))
             .bind(id)
@@ -281,4 +383,10 @@ impl Store {
             .await?;
         Ok(repo)
     }
+}
+
+/// SQLite integers are signed. No forge numbers PRs past `i64`.
+fn pr_number(number: u64) -> Result<i64, StoreError> {
+    i64::try_from(number)
+        .map_err(|_| StoreError::Database(format!("PR number {number} is too large")))
 }
