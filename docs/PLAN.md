@@ -321,7 +321,7 @@ ACP gives Docent no way to read an agent's settings; Inherit mode works by not o
 
 - Fetch PR heads, including `refs/pull/N/head` for forks, into `refs/docent/*` only. Old SHAs stay reachable for interdiffs after a force-push.
 - Check out in detached HEAD, so your branches stay clean.
-- Delete a worktree when its PR closes or merges, and enforce a disk cap (10 GB by default, configurable) with least-recently-used eviction. Each open ends with a check in the background; the worktree opened last is never evicted.
+- Delete a worktree when its PR closes or merges, and enforce a disk cap (10 GB by default, configurable) with least-recently-used eviction. Each open ends with a check in the background; the worktree opened last is never evicted. Eviction keeps the PR's `refs/docent/*` refs; they go when it closes or merges.
 
 ### 5.8 Commenting and submitting reviews (M4)
 

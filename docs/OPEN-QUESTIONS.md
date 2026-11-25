@@ -70,7 +70,7 @@ M0.5 answered 1, 2, 3, 6 and 7 (see Resolved). These still need a real test. The
 | "Reviewed" | Submitting a review or clicking Mark reviewed, never opening |
 | MVP scope | Since-last-review moved into the MVP; poller and notifications stay in M5 |
 | Repos | Watched repos only; Bind or full Clone; diffs always from local git |
-| Worktrees | `refs/docent/*`, detached HEAD, removed on close, disk cap (default 10 GB) evicting the least recently opened, never the newest. The path isn't stored; the clone it came from is, so a rebound repo's worktrees can still be removed |
+| Worktrees | `refs/docent/*`, detached HEAD, removed on close, disk cap (default 10 GB) evicting the least recently opened, never the newest. Eviction keeps the PR's refs. The path isn't stored; the clone it came from is, so a rebound repo's worktrees can still be removed |
 | Explain | Hover `?` only; per hunk or symbol; one at a time per PR |
 | Finding continuity | Fingerprints, interdiff re-runs, wider cache key, line validation |
 | Auto-run limits | Open, non-draft, review requested or pinned; 1,500 lines or 50 files |

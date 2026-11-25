@@ -26,10 +26,12 @@ pub async fn evict(store: &Store, git: &Git, worktrees: &Path) -> Result<(), Com
         if total <= cap {
             break;
         }
-        match remove(store, git, &root, worktree).await {
-            Ok(()) => total -= used,
-            Err(err) => log(worktree, &err),
+        if let Err(err) = remove(store, git, &root, worktree).await {
+            log(worktree, &err);
         }
+        // Also when it failed: evicting the others can't make up for one that
+        // is stuck, and would cost them their place every time.
+        total -= used;
     }
     Ok(())
 }
@@ -59,7 +61,7 @@ async fn remove(
     worktree: &RecordedWorktree,
 ) -> Result<(), CommandError> {
     let dest = root.pr(worktree.repo_id, worktree.number);
-    git.remove_pr_worktree(Path::new(&worktree.clone_path), &worktree.remote, &dest)
+    git.evict_pr_worktree(Path::new(&worktree.clone_path), &dest)
         .await?;
     store
         .forget_worktree(worktree.repo_id, worktree.number)

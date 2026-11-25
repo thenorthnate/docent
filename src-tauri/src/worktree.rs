@@ -46,6 +46,7 @@ pub async fn open(
     let opened = git
         .open_pr_worktree(&clone.path, &clone.remote, &dest)
         .await?;
+    store.touch_worktree(repo.id, number).await?;
     Ok(OpenedPr::Ready {
         path: opened.path.display().to_string(),
         head_sha: opened.head_sha,

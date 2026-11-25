@@ -289,8 +289,9 @@ impl Store {
         self.watched_repo(id).await
     }
 
-    /// Records that PR `number`'s worktree is being opened now, from `remote`
-    /// of the clone at `clone_path`.
+    /// Records PR `number`'s worktree, about to be opened from `remote` of the
+    /// clone at `clone_path`. Until [`Store::touch_worktree`] it counts as
+    /// never opened, or as last opened when it was before.
     pub async fn record_worktree(
         &self,
         repo: RepoId,
@@ -298,16 +299,11 @@ impl Store {
         clone_path: &str,
         remote: &str,
     ) -> Result<(), StoreError> {
-        // Always later than every other row, even within a millisecond or
-        // after the clock goes back, so the order is the order of use.
         sqlx::query(
-            "INSERT INTO worktrees (repo_id, number, clone_path, remote, last_opened) \
-             VALUES (?1, ?2, ?3, ?4, MAX( \
-                 CAST(unixepoch('subsec') * 1000 AS INTEGER), \
-                 (SELECT COALESCE(MAX(last_opened), 0) + 1 FROM worktrees))) \
+            "INSERT INTO worktrees (repo_id, number, clone_path, remote) \
+             VALUES (?1, ?2, ?3, ?4) \
              ON CONFLICT (repo_id, number) DO UPDATE SET \
-                 clone_path = excluded.clone_path, remote = excluded.remote, \
-                 last_opened = excluded.last_opened",
+                 clone_path = excluded.clone_path, remote = excluded.remote",
         )
         .bind(repo)
         .bind(pr_number(number)?)
@@ -319,7 +315,19 @@ impl Store {
     }
 
     /// Marks a recorded worktree as opened now.
-    pub async fn touch_worktree(&self, _repo: RepoId, _number: u64) -> Result<(), StoreError> {
+    pub async fn touch_worktree(&self, repo: RepoId, number: u64) -> Result<(), StoreError> {
+        // Always later than every other row, even within a millisecond or
+        // after the clock goes back, so the order is the order of use.
+        sqlx::query(
+            "UPDATE worktrees SET last_opened = MAX( \
+                 CAST(unixepoch('subsec') * 1000 AS INTEGER), \
+                 (SELECT MAX(last_opened) + 1 FROM worktrees)) \
+             WHERE repo_id = ?1 AND number = ?2",
+        )
+        .bind(repo)
+        .bind(pr_number(number)?)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
