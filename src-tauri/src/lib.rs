@@ -1,6 +1,7 @@
 mod bind;
 mod changed_files;
 mod clone;
+mod closed;
 mod command_error;
 mod evict;
 mod inbox;
