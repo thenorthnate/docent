@@ -155,12 +155,16 @@ async fn a_failed_clone_shows_gits_error_and_leaves_no_folder() {
 #[tokio::test]
 async fn a_clone_that_stalls_is_stopped_and_leaves_no_folder() {
     let fixture = Fixture::new(&[]);
-    fixture.ssh("exec sleep 30");
+    let pid_file = fixture.home.join("ssh.pid");
+    fixture.ssh(&format!(
+        "echo $$ > '{}'\nexec sleep 30",
+        pid_file.display()
+    ));
 
     let started = std::time::Instant::now();
     let err = fixture
         .git()
-        .with_stall_limit(Duration::from_millis(500))
+        .with_stall_limit(Duration::from_secs(2))
         .clone_repo(
             &fixture.parent,
             "github.com",
@@ -172,6 +176,14 @@ async fn a_clone_that_stalls_is_stopped_and_leaves_no_folder() {
         .unwrap_err();
 
     assert!(err.to_string().contains("stopped responding"), "{err}");
+    // ssh is stopped along with git, so it can't keep writing.
+    let pid = std::fs::read_to_string(&pid_file).expect("ssh ran");
+    let gone = (0..50).any(|_| {
+        std::thread::sleep(Duration::from_millis(50));
+        let alive = Command::new("kill").args(["-0", pid.trim()]).output();
+        !alive.expect("run kill").status.success()
+    });
+    assert!(gone, "ssh is still running");
     assert!(started.elapsed() < Duration::from_secs(20));
     assert!(fixture.cloned().is_empty(), "{:?}", fixture.cloned());
 }
@@ -189,6 +201,58 @@ async fn a_process_left_behind_by_git_does_not_hold_up_the_clone() {
     assert!(started.elapsed() < Duration::from_secs(20));
 }
 
+/// Answers the check of where the clone's URL leads, in a fake git.
+const LS_REMOTE: &str =
+    "case \"$*\" in ls-remote*) echo https://github.com/octocat/Hello-World.git; exit 0;; esac";
+
+/// The forge's own messages are text it chose.
+#[tokio::test]
+async fn the_forge_cannot_fake_a_credentials_error() {
+    let fixture = Fixture::new(&[]);
+    fixture.ssh("echo 'remote: Authentication failed for x' >&2; exit 255");
+
+    assert_eq!(fixture.clone().await.unwrap_err().kind(), "git_failed");
+}
+
+/// A clone whose remote isn't the forge can't be bound, so it isn't started.
+#[tokio::test]
+async fn a_url_redirected_to_another_host_is_refused_before_cloning() {
+    let fixture = Fixture::new(&[]);
+    let asked = fixture.home.join("asked");
+    fixture.ssh(&format!("touch '{}'", asked.display()));
+    let config = std::fs::read_to_string(fixture.home.join(".gitconfig")).expect("read");
+    fixture.config(&config.replace("git@github.com:", "git@work-alias:"));
+
+    let err = fixture.clone().await.unwrap_err();
+
+    assert_eq!(err.kind(), "redirected");
+    assert!(err.to_string().contains("git@work-alias:octocat"), "{err}");
+    assert!(!asked.exists(), "the clone was started");
+    assert!(fixture.cloned().is_empty(), "{:?}", fixture.cloned());
+}
+
+/// The user may move the folder and put another there during a long clone.
+#[tokio::test]
+async fn a_folder_that_replaced_the_clone_is_not_deleted() {
+    let fixture = Fixture::new(&[]);
+    let (dest, moved) = (
+        fixture.parent.join("Hello-World"),
+        fixture.home.join("moved"),
+    );
+    fixture.ssh(&format!(
+        "mv '{d}' '{m}'; mkdir '{d}'; touch '{d}/mine.txt'; exit 255",
+        d = dest.display(),
+        m = moved.display()
+    ));
+
+    fixture.clone().await.unwrap_err();
+
+    assert!(
+        dest.join("mine.txt").exists(),
+        "the user's file was deleted"
+    );
+}
+
 /// Only a fake git can fail this way without the network.
 #[tokio::test]
 async fn missing_credentials_say_how_to_set_them_up() {
@@ -201,7 +265,7 @@ async fn missing_credentials_say_how_to_set_them_up() {
         let fake = bin.path().join("git");
         std::fs::write(
             &fake,
-            format!("#!/bin/sh\necho \"{stderr}\" >&2\nexit 128\n"),
+            format!("#!/bin/sh\n{LS_REMOTE}\necho \"{stderr}\" >&2\nexit 128\n"),
         )
         .expect("write fake git");
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");

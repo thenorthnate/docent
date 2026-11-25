@@ -13,6 +13,7 @@ use docent_git::Git;
 fn fake_git(dir: &Path, dump: &Path) {
     let script = format!(
         "#!/bin/sh\n\
+         case \"$*\" in ls-remote*) echo https://github.com/octocat/Hello-World.git; exit 0;; esac\n\
          env > '{dump}'\n\
          if [ -t 0 ]; then echo STDIN_IS_TTY >> '{dump}'; fi\n\
          if read -r line; then echo STDIN_HAD_INPUT >> '{dump}'; fi\n\

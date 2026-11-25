@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory } from "vue-router";
 import ReviewPage from "./ReviewPage.vue";
+import { useClonesStore } from "@/stores/clones";
 import { createAppRouter } from "@/router";
 import type { PullOverview } from "@/lib/review";
 
@@ -66,10 +67,12 @@ async function mountPage(
     asked.push(args);
     return answer(args);
   });
+  const pinia = createPinia();
+  setActivePinia(pinia);
   const router = createAppRouter(createMemoryHistory());
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(ReviewPage, { global: { plugins: [createPinia(), router] }, attachTo: document.body });
+  const wrapper = mount(ReviewPage, { global: { plugins: [router, pinia] }, attachTo: document.body });
   await flushPromises();
   return { wrapper, router, asked };
 }
@@ -317,6 +320,38 @@ describe("ReviewPage worktree", () => {
 
     expect(calls.map((c) => c.cmd)).toEqual(["open_pr_worktree", "clone_repo", "open_pr_worktree"]);
     expect(status.text()).toContain("Worktree ready at ccccccc");
+  });
+
+  it("opens the worktree if a clone finished while it was being asked for", async () => {
+    let answer!: (opened: unknown) => void;
+    const answers = [
+      new Promise((r) => (answer = r)),
+      Promise.resolve({ status: "ready", path: "/w", head_sha: "d".repeat(40) }),
+    ];
+    core = (cmd) => {
+      if (cmd === "open_pr_worktree") return answers.shift();
+      return { ...repo, local_path: "/Users/me/code/Hello-World" };
+    };
+    const status = await open();
+
+    await useClonesStore().start(repo.id);
+    answer({ status: "unbound", repo });
+    await flushPromises();
+
+    expect(status.text()).toContain("Worktree ready at ddddddd");
+  });
+
+  it("can't bind a repo that is being cloned from elsewhere", async () => {
+    mockCore([{ status: "unbound", repo }]);
+    const answerCore = core;
+    core = (cmd, args) => (cmd === "clone_repo" ? new Promise(() => {}) : answerCore(cmd, args));
+    const status = await open();
+
+    void useClonesStore().start(repo.id);
+    await flushPromises();
+
+    const bind = status.findAll("button").find((b) => b.text() === "Bind");
+    expect(bind?.attributes("disabled")).toBeDefined();
   });
 
   it("stays unbound when the folder picker is cancelled", async () => {
