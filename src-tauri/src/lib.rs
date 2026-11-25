@@ -7,6 +7,7 @@ mod review;
 mod shell_env;
 mod watch;
 mod worktree;
+mod worktrees;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -18,7 +19,8 @@ use docent_git::Git;
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use tokio::sync::{OnceCell, RwLock};
+use tokio::sync::OnceCell;
+use worktrees::{InUse, Worktrees};
 
 /// Process-wide state. Tokens live only in `accounts`, in memory.
 ///
@@ -31,9 +33,7 @@ struct AppState {
     child_path: OnceCell<OsString>,
     /// Set once the remembered hosts have been reconnected (or have failed).
     restored: OnceCell<()>,
-    /// Read while a PR's worktree is being opened, written while worktrees
-    /// are evicted, so one is never removed as it is opened.
-    worktrees_in_use: RwLock<()>,
+    worktrees_in_use: InUse,
 }
 
 impl AppState {
@@ -170,7 +170,7 @@ async fn open_pr_worktree(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<worktree::OpenedPr, CommandError> {
-    let worktrees = app
+    let root = app
         .path()
         .app_data_dir()
         .map_err(|err| CommandError {
@@ -178,23 +178,14 @@ async fn open_pr_worktree(
             message: format!("Docent couldn't find its data folder: {err}"),
         })?
         .join("worktrees");
-    let git = state.git().await;
-    let opened = {
-        let _opening = state.worktrees_in_use.read().await;
-        worktree::open(&store, &git, &worktrees, &host, &owner, &repo, number).await
+    let worktrees = Worktrees {
+        in_use: state.worktrees_in_use.clone(),
+        store: store.inner().clone(),
+        git: state.git().await,
+        root,
     };
-    // In the background, so the PR shows without waiting for it.
-    tauri::async_runtime::spawn(async move {
-        let state = app.state::<AppState>();
-        // Another PR is being opened, or worktrees are already being evicted.
-        // Opening ends by evicting, so this can be left to it.
-        let Ok(_evicting) = state.worktrees_in_use.try_write() else {
-            return;
-        };
-        if let Err(err) = evict::evict(&app.state::<Store>(), &git, &worktrees).await {
-            eprintln!("Could not enforce the worktree disk cap: {}", err.message);
-        }
-    });
+    // The eviction carries on in the background.
+    let (opened, _evicting) = worktrees.open(&host, &owner, &repo, number).await;
     opened
 }
 
