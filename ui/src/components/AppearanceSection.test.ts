@@ -30,8 +30,13 @@ function setup({ stored, osDark = false }: { stored?: string; osDark?: boolean }
   return { wrapper, root, query, items, isDark: () => root.classList.contains("dark") };
 }
 
-function option(wrapper: ReturnType<typeof mount>, label: string) {
-  return wrapper.get<HTMLInputElement>(`input[aria-label="${label}"]`);
+/** The radio button inside the `<label>` that reads `text`. */
+function option(wrapper: ReturnType<typeof mount>, text: string) {
+  const label = wrapper.findAll("label").find((candidate) => candidate.text() === text);
+  if (!label) {
+    throw new Error(`no option labelled ${text}`);
+  }
+  return label.get<HTMLInputElement>('input[type="radio"]');
 }
 
 describe("AppearanceSection", () => {
@@ -39,8 +44,7 @@ describe("AppearanceSection", () => {
     const { wrapper } = setup();
 
     expect(wrapper.get("h2").text()).toBe("Appearance");
-    expect(wrapper.findAll('input[type="radio"]').map((input) => input.attributes("aria-label")))
-      .toEqual(["System", "Light", "Dark"]);
+    expect(wrapper.findAll("label").map((label) => label.text())).toEqual(["System", "Light", "Dark"]);
     expect(option(wrapper, "System").element.checked).toBe(true);
   });
 
