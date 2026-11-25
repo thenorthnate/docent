@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { getChunks } from "@codemirror/merge";
 import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { gitDiffView } from "@/lib/gitChunks";
 import type { Hunk } from "@/lib/review";
 
@@ -53,5 +54,19 @@ describe("gitDiffView", () => {
     const hunks = [hunk(2, 1, 2, 1)];
 
     expect(shownHunks("a\rb\nc\n", "a\rb\nC\n", hunks)).toEqual(hunks);
+  });
+
+  describe("look", () => {
+    let view: EditorView | null = null;
+    afterEach(() => view?.destroy());
+
+    it("highlights added text with a plain fill, not an underline", () => {
+      const state = EditorState.create({ doc: "new text\n", extensions: gitDiffView("old text\n", [hunk(1, 1, 1, 1)]) });
+      view = new EditorView({ state, parent: document.body });
+
+      const style = getComputedStyle(view.dom.querySelector(".cm-changedText")!);
+      expect(style.backgroundImage + style.background).not.toContain("gradient");
+      expect(style.backgroundColor).not.toBe("");
+    });
   });
 });

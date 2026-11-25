@@ -10,6 +10,7 @@
  */
 import { Chunk, presentableDiff, unifiedMergeView, type DiffConfig } from "@codemirror/merge";
 import { EditorState, Text, type Extension } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import type { Hunk } from "@/lib/review";
 
 /** Each Docent document's hunks, keyed by the diff config its view was given. */
@@ -46,6 +47,14 @@ function chunksOf(a: Text, b: Text, hunks: readonly Hunk[]): Chunk[] {
 }
 
 /**
+ * Added text gets a plain fill, as removed text does, in place of
+ * CodeMirror's underline, which is distracting to read through.
+ */
+const addedText = EditorView.theme({
+  "&.cm-merge-b .cm-changedText": { background: "#22bb2240" },
+});
+
+/**
  * A read-only unified view of the editor's document against `old`, showing
  * git's `hunks` between them. Lines split on `\n` only, as in git, so the
  * editor must be given its document as is.
@@ -56,6 +65,7 @@ export function gitDiffView(old: string, hunks: readonly Hunk[]): Extension {
   return [
     EditorState.lineSeparator.of("\n"),
     EditorState.readOnly.of(true),
+    addedText,
     unifiedMergeView({ original: Text.of(old.split("\n")), diffConfig, mergeControls: false }),
   ];
 }
