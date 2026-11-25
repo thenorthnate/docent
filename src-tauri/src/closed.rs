@@ -26,10 +26,12 @@ pub async fn done_pulls(
             failure.host, failure.error
         );
     }
+    // A host that failed says nothing about its PRs, whatever came back.
+    let failed = |host: &str| answer.failures.iter().any(|f| f.host == host);
     let done: Vec<&PullRef> = answer
         .states
         .iter()
-        .filter(|(_, state)| state.is_done())
+        .filter(|(pull, state)| state.is_done() && !failed(&pull.host))
         .map(|(pull, _)| pull)
         .collect();
     Ok(recorded

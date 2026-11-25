@@ -37,8 +37,8 @@ impl FakeForge {
         }
     }
 
-    /// A forge that knows the states in `states`, and fails the hosts in its
-    /// `failures`, whose PRs it reports no states for.
+    /// A forge that answers with `states`, kept to the PRs asked about. Unlike
+    /// a real forge, it reports states even for hosts in `failures`.
     pub fn with_states(states: PullStates) -> Self {
         Self {
             states,
@@ -103,13 +103,14 @@ impl Forge for FakeForge {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(pulls.to_vec());
-        let failed = |host: &str| self.states.failures.iter().any(|f| f.host == host);
+        // Failed hosts' states are passed on too, so callers must prove they
+        // ignore them.
         PullStates {
             states: self
                 .states
                 .states
                 .iter()
-                .filter(|(pull, _)| pulls.contains(pull) && !failed(&pull.host))
+                .filter(|(pull, _)| pulls.contains(pull))
                 .cloned()
                 .collect(),
             failures: self.states.failures.clone(),
