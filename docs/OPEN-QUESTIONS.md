@@ -204,6 +204,14 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | Time limit | None overall. A clone that prints nothing for 10 minutes is stopped |
 | Hooks | Off while cloning: a relative `core.hooksPath` in the user's config would run the cloned repo's files |
 
+### Added while building the unified diff viewer (#23)
+
+| Topic | Decision |
+|---|---|
+| Hunk fidelity | Wrapping the changes isn't enough: CodeMirror's chunking merges changes one blank line apart after `makePresentable`. Docent replaces `Chunk.build` for its own documents and builds chunks from git's hunks. Upstreaming an option is the long-term fix |
+| Naming a file to diff | By its two blob IDs from the listing, not its path, so names that aren't UTF-8, or that read the same, each find their own diff |
+| Binary and large files | Binary is a NUL in the first 8,000 bytes, ignoring the PR's attributes; a side over 4 MiB isn't read |
+
 ### Added while designing the review lifecycle
 
 GitHub's `review-requested:@me` drops a PR once you review it, and team requests vanish when a teammate picks them up, so PRs disappeared from the inbox while still needing you. See the review lifecycle in `PLAN.md` 5.2.

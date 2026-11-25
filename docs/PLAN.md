@@ -230,7 +230,8 @@ The app shell is an **activity bar** down the far left: Inbox, Review, Explore, 
 
 - Overview tab: description, checks, timeline, and an AI summary from the explainer lens.
 - Diff modes: unified or split, full PR or since-last-review, ignore-whitespace. Moved code shows as moved (see 5.14).
-- The viewer shows git's hunks exactly. CodeMirror's `makePresentable` pass can slide a hunk by a line or merge two close hunks (2 of 133 files in M0), so Docent wraps the changes it passes in, or upstreams an option to skip that pass, when the viewer lands in M1.
+- The viewer shows git's hunks exactly. CodeMirror's `makePresentable` pass can slide a hunk by a line, and its chunking merges changes one short or blank line apart, whatever `diffConfig.override` returns (2 of 133 files in M0). So Docent replaces `Chunk.build` for its own documents and builds the chunks from git's `-U0` hunks; only highlights inside a hunk are CodeMirror's. Upstreaming an option to skip those passes would retire the shim.
+- Each side of a file is named by its blob ID, not its path, so a name that isn't UTF-8 still finds its diff. Hunks come from `git diff` of the two blobs, with every setting that shapes them fixed on the command line; blobs have no path, so a PR's `.gitattributes` can't mark a text file binary or pick a diff command. Binary means a NUL in the first 8,000 bytes (git's own rule), and a side over 4 MiB shows a placeholder.
 - Findings on deleted lines in unified view: CodeMirror can't mark individual deleted lines there, because it owns their DOM (M0). M3 decides between markers in split view only and a marker on the nearest new-side line.
 - Show/hide findings by lens and severity.
 - Your pending comments have their own gutter marker, and the file tree counts them beside agent findings.
@@ -322,7 +323,7 @@ ACP gives Docent no way to read an agent's settings; Inherit mode works by not o
 - Fetch PR heads, including `refs/pull/N/head` for forks, into `refs/docent/*` only. Old SHAs stay reachable for interdiffs after a force-push.
 - A PR's diff runs from the merge base of its head and the base SHA the forge gives for it, not the base branch, whose tip contains the head once the PR merges. A base the clone lacks is fetched by SHA, also into `refs/docent/*`.
 - Check out in detached HEAD, so your branches stay clean.
-- Delete a worktree when its PR closes or merges, and enforce a disk cap (10 GB by default, configurable) with least-recently-used eviction. Each open and each listing of a PR's files ends with a check in the background, and nothing is evicted during either; the worktree opened last is never evicted. Eviction keeps the PR's `refs/docent/*` refs; they go when it closes or merges.
+- Delete a worktree when its PR closes or merges, and enforce a disk cap (10 GB by default, configurable) with least-recently-used eviction. Each open, listing of a PR's files and file diff ends with a check in the background, and nothing is evicted during any of them; the worktree opened last is never evicted. Eviction keeps the PR's `refs/docent/*` refs; they go when it closes or merges.
 
 ### 5.8 Commenting and submitting reviews (M4)
 
