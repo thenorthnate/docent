@@ -570,3 +570,22 @@ async fn a_diff_in_a_worktree_that_is_gone_says_so() {
 
     assert_eq!(err.kind(), "worktree_missing");
 }
+
+/// A submodule's side names a commit in another repo, which isn't a blob
+/// this clone can read.
+#[tokio::test]
+async fn a_submodule_has_no_blob_to_diff() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let elsewhere = "1".repeat(40);
+    let entry = format!("160000,{elsewhere},sub");
+    sh_git(&f.work, &["update-index", "--add", "--cacheinfo", &entry]);
+    // Straight from the index: there's no folder for `add` to find.
+    sh_git(&f.work, &["commit", "--quiet", "-m", "x"]);
+    let head = sh_git(&f.work, &["rev-parse", "HEAD"]);
+    f.open_pr_at(&head).await;
+
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+
+    assert_eq!(files.len(), 1);
+    assert_eq!((&files[0].old_blob, &files[0].new_blob), (&None, &None));
+}

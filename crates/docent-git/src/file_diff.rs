@@ -62,7 +62,9 @@ impl Git {
         let worktree = self.checked_worktree(clone, dest).await?;
         let mut largest = 0;
         for sha in [old_blob, new_blob].into_iter().flatten() {
-            let size = self.git(worktree, &["cat-file", "-s", sha]).await?;
+            let size = self
+                .run_hardened(worktree, &["cat-file", "-s", sha], NETWORK_TIMEOUT)
+                .await?;
             let size = size.trim().parse().map_err(|_| unexpected("cat-file -s"))?;
             largest = largest.max(size);
         }
@@ -106,12 +108,8 @@ impl Git {
         })
     }
 
-    /// `git <args>`, hardened, given as long as a fetch: a partial clone
-    /// fetches the objects it lacks.
-    async fn git(&self, worktree: &Path, args: &[&str]) -> Result<String, GitError> {
-        self.run_hardened(worktree, args, NETWORK_TIMEOUT).await
-    }
-
+    /// A blob's bytes, or none for a missing side. Reads, like the sizes, get
+    /// as long as a fetch: a partial clone fetches the objects it lacks.
     async fn contents(&self, worktree: &Path, blob: Option<&str>) -> Result<Vec<u8>, GitError> {
         let Some(blob) = blob else {
             return Ok(Vec::new());

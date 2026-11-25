@@ -18,8 +18,8 @@ pub struct ChangedFile {
     pub status: FileStatus,
     /// `None` for a binary file, which git doesn't count lines in.
     pub lines: Option<LineCounts>,
-    /// The file's contents before and after, as full object IDs; `None` on the
-    /// side where it doesn't exist. These name the file exactly for
+    /// The file's contents before and after, as full object IDs; `None` on a
+    /// side where it doesn't exist or is a submodule. These name the file exactly for
     /// [`Git::file_diff`], whatever its path.
     pub old_blob: Option<String>,
     pub new_blob: Option<String>,
@@ -135,8 +135,10 @@ fn parse(output: &[u8]) -> Option<Vec<ChangedFile>> {
     // `:100644 100644 <old> <new> R090`, then the old path if renamed, then
     // the path.
     while let Some(raw) = fields.next_if(|field| field.starts_with(':')) {
-        let mut parts = raw.split(' ').skip(2);
-        let (old_blob, new_blob) = (blob(parts.next()?), blob(parts.next()?));
+        let mut parts = raw[1..].split(' ');
+        let (old_mode, new_mode) = (parts.next()?, parts.next()?);
+        let old_blob = blob(old_mode, parts.next()?);
+        let new_blob = blob(new_mode, parts.next()?);
         let status = match parts.next()?.chars().next()? {
             'A' => FileStatus::Added,
             'M' | 'T' => FileStatus::Modified,
@@ -176,8 +178,9 @@ fn parse(output: &[u8]) -> Option<Vec<ChangedFile>> {
     Some(files)
 }
 
-/// An object ID from a raw record, or `None` for the all-zero one that marks
-/// a side the file doesn't exist on.
-fn blob(id: &str) -> Option<String> {
-    (!id.bytes().all(|byte| byte == b'0')).then(|| id.to_string())
+/// A side's object ID from a raw record, if it is a blob: not the all-zero ID
+/// of a side the file doesn't exist on, nor a submodule's commit.
+fn blob(mode: &str, id: &str) -> Option<String> {
+    let absent = id.bytes().all(|byte| byte == b'0');
+    (!absent && mode != "160000").then(|| id.to_string())
 }
