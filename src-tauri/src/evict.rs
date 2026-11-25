@@ -63,9 +63,8 @@ async fn remove(
     let dest = root.pr(worktree.repo_id, worktree.number);
     git.evict_pr_worktree(Path::new(&worktree.clone_path), &dest)
         .await?;
-    store
-        .forget_worktree(worktree.repo_id, worktree.number)
-        .await?;
+    // The PR's pins stay, so its record does too, for when it closes.
+    store.mark_evicted(worktree.repo_id, worktree.number).await?;
     Ok(())
 }
 
@@ -194,6 +193,21 @@ mod tests {
         for (number, stays) in [(1, true), (2, false), (3, false), (4, true)] {
             assert_eq!(f.folder(number).exists(), stays, "PR {number}");
         }
+    }
+
+    /// Eviction keeps the PR's pins, so the PR stays on record until it
+    /// closes or merges.
+    #[tokio::test]
+    async fn an_evicted_pr_stays_on_record_for_its_pins() {
+        let f = Fixture::new().await;
+        f.open(1).await;
+        f.open(2).await;
+
+        f.evict_to(0).await;
+
+        let pulls = f.store.recorded_pulls().await.unwrap();
+        let numbers: Vec<u64> = pulls.iter().map(|p| p.worktree.number).collect();
+        assert_eq!(numbers, [1, 2]);
     }
 
     #[tokio::test]

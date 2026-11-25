@@ -130,3 +130,52 @@ async fn the_cap_is_ten_gigabytes_until_set_and_survives_a_restart() {
     let store = Store::open(&path).await.unwrap();
     assert_eq!(store.worktree_cap().await, Ok(5_000_000_000));
 }
+
+/// Eviction frees the disk but keeps the PR's pins, so the PR stays on
+/// record, with its repo's name, until it is forgotten.
+#[tokio::test]
+async fn an_evicted_worktree_is_not_listed_but_its_pr_stays_on_record() {
+    let store = Store::open_in_memory().await.unwrap();
+    let repo = watched(&store, "a").await;
+    for number in [7, 8] {
+        store
+            .record_worktree(repo, number, "/code/x", "origin")
+            .await
+            .unwrap();
+    }
+
+    store.mark_evicted(repo, 7).await.expect("marks");
+
+    assert_eq!(recorded(&store).await, [(repo, 8)]);
+    let pulls = store.recorded_pulls().await.expect("lists");
+    let found: Vec<_> = pulls
+        .iter()
+        .map(|p| (p.host.as_str(), p.owner.as_str(), p.name.as_str(), p.worktree.number))
+        .collect();
+    assert_eq!(
+        found,
+        [("github.com", "octocat", "a", 7), ("github.com", "octocat", "a", 8)]
+    );
+    assert_eq!(pulls[0].worktree.clone_path, "/code/x");
+
+    store.forget_worktree(repo, 7).await.unwrap();
+    assert_eq!(store.recorded_pulls().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn opening_an_evicted_worktree_again_lists_it_again() {
+    let store = Store::open_in_memory().await.unwrap();
+    let repo = watched(&store, "a").await;
+    store
+        .record_worktree(repo, 7, "/code/x", "origin")
+        .await
+        .unwrap();
+    store.mark_evicted(repo, 7).await.unwrap();
+
+    store
+        .record_worktree(repo, 7, "/code/x", "origin")
+        .await
+        .unwrap();
+
+    assert_eq!(recorded(&store).await, [(repo, 7)]);
+}

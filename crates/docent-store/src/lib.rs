@@ -54,6 +54,17 @@ pub struct RecordedWorktree {
     pub remote: String,
 }
 
+/// A PR Docent keeps a worktree or pins for, with its repo's name on the
+/// forge.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct RecordedPull {
+    pub host: String,
+    pub owner: String,
+    pub name: String,
+    #[sqlx(flatten)]
+    pub worktree: RecordedWorktree,
+}
+
 /// How many bytes PR worktrees may use until the user chooses.
 pub const DEFAULT_WORKTREE_CAP: u64 = 10_000_000_000;
 
@@ -303,7 +314,7 @@ impl Store {
             "INSERT INTO worktrees (repo_id, number, clone_path, remote) \
              VALUES (?1, ?2, ?3, ?4) \
              ON CONFLICT (repo_id, number) DO UPDATE SET \
-                 clone_path = excluded.clone_path, remote = excluded.remote",
+                 clone_path = excluded.clone_path, remote = excluded.remote, evicted = 0",
         )
         .bind(repo)
         .bind(pr_number(number)?)
@@ -331,17 +342,48 @@ impl Store {
         Ok(())
     }
 
-    /// The recorded worktrees, least recently opened first.
+    /// The recorded worktrees that haven't been evicted, least recently
+    /// opened first.
     pub async fn worktrees(&self) -> Result<Vec<RecordedWorktree>, StoreError> {
         let worktrees = sqlx::query_as(
-            "SELECT repo_id, number, clone_path, remote FROM worktrees ORDER BY last_opened",
+            "SELECT repo_id, number, clone_path, remote FROM worktrees \
+             WHERE evicted = 0 ORDER BY last_opened",
         )
         .fetch_all(&self.pool)
         .await?;
         Ok(worktrees)
     }
 
-    /// Drops a worktree's record, once it is removed.
+    /// Marks a worktree as evicted: its folder is gone, but its PR's pins
+    /// stay, so it is no longer listed by [`Store::worktrees`] but still is by
+    /// [`Store::recorded_pulls`].
+    pub async fn mark_evicted(&self, repo: RepoId, number: u64) -> Result<(), StoreError> {
+        sqlx::query("UPDATE worktrees SET evicted = 1 WHERE repo_id = ?1 AND number = ?2")
+            .bind(repo)
+            .bind(pr_number(number)?)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Every PR with a worktree or pins on record, evicted or not, whether
+    /// or not its repo is still watched, sorted by host, owner, name and
+    /// number.
+    pub async fn recorded_pulls(&self) -> Result<Vec<RecordedPull>, StoreError> {
+        let pulls = sqlx::query_as(
+            "SELECT accounts.host, repos.owner, repos.name, worktrees.repo_id, \
+                 worktrees.number, worktrees.clone_path, worktrees.remote \
+             FROM worktrees \
+             JOIN repos ON repos.id = worktrees.repo_id \
+             JOIN accounts ON accounts.id = repos.account_id \
+             ORDER BY accounts.host, repos.owner, repos.name, worktrees.number",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(pulls)
+    }
+
+    /// Drops a PR's record, once its worktree and pins are removed.
     pub async fn forget_worktree(&self, repo: RepoId, number: u64) -> Result<(), StoreError> {
         sqlx::query("DELETE FROM worktrees WHERE repo_id = ?1 AND number = ?2")
             .bind(repo)
