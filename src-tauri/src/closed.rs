@@ -147,7 +147,10 @@ mod tests {
 
         async fn open(&self, number: u64) {
             let head = format!("refs/pull/{number}/head");
-            sh_git(&self.dir.path().join("forge"), &["update-ref", &head, "main"]);
+            sh_git(
+                &self.dir.path().join("forge"),
+                &["update-ref", &head, "main"],
+            );
             let clone = self.clone_path();
             self.store
                 .record_worktree(self.repo, number, clone.to_str().unwrap(), "origin")

@@ -89,6 +89,12 @@ export const useInboxStore = defineStore("inbox", () => {
       if (isLatest()) sections.value[section] = sectionState({ ...answer, loaded: true });
     };
     loading.value = true;
+    // Clears out the worktrees of PRs that closed or merged, in the
+    // background: the inbox never waits on it, and a failure only means it
+    // is tried again next time.
+    invoke("remove_closed_worktrees").catch((err: unknown) => {
+      console.warn("Could not remove closed PRs' worktrees:", messageOf(err));
+    });
     try {
       const watched = await invoke<unknown[]>("list_watched_repos");
       if (!isLatest()) return;

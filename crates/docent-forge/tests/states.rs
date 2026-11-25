@@ -88,9 +88,18 @@ async fn every_host_is_asked_once_for_all_its_prs() {
     assert_eq!(
         found.states,
         vec![
-            (pull("github.com", "octocat/Hello-World", 1), PullState::Open),
-            (pull("github.com", "octocat/Hello-World", 2), PullState::Merged),
-            (pull("github.com", "octocat/Spoon-Knife", 3), PullState::Closed),
+            (
+                pull("github.com", "octocat/Hello-World", 1),
+                PullState::Open
+            ),
+            (
+                pull("github.com", "octocat/Hello-World", 2),
+                PullState::Merged
+            ),
+            (
+                pull("github.com", "octocat/Spoon-Knife", 3),
+                PullState::Closed
+            ),
         ]
     );
 }
@@ -111,7 +120,8 @@ async fn a_failed_query_reports_the_host_and_no_states() {
 #[tokio::test]
 async fn a_query_that_returns_no_data_reports_the_host() {
     let api = github_for(TOKEN, "octocat").await;
-    let errors = serde_json::json!({ "data": null, "errors": [{ "message": "Something went wrong" }] });
+    let errors =
+        serde_json::json!({ "data": null, "errors": [{ "message": "Something went wrong" }] });
     states_answer(&api, ok(errors)).await;
     let accounts = connected(&api).await;
 
@@ -134,7 +144,10 @@ async fn a_repo_left_out_of_the_answer_is_unknown() {
 
     let found = accounts.pull_states(&asked()).await;
 
-    let closed = (pull("github.com", "octocat/Hello-World", 1), PullState::Closed);
+    let closed = (
+        pull("github.com", "octocat/Hello-World", 1),
+        PullState::Closed,
+    );
     assert_eq!(found.states, vec![closed]);
 }
 

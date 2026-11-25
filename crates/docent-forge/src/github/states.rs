@@ -19,7 +19,9 @@ fn query(repos: &[(&str, &str, Vec<u64>)]) -> String {
         params.push(format!("$o{i}: String!, $n{i}: String!"));
         fields.push_str(&format!("r{i}: repository(owner: $o{i}, name: $n{i}) {{ "));
         for number in numbers {
-            fields.push_str(&format!("p{number}: pullRequest(number: {number}) {{ state }} "));
+            fields.push_str(&format!(
+                "p{number}: pullRequest(number: {number}) {{ state }} "
+            ));
         }
         fields.push_str("} ");
     }

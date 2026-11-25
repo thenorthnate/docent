@@ -150,11 +150,21 @@ async fn an_evicted_worktree_is_not_listed_but_its_pr_stays_on_record() {
     let pulls = store.recorded_pulls().await.expect("lists");
     let found: Vec<_> = pulls
         .iter()
-        .map(|p| (p.host.as_str(), p.owner.as_str(), p.name.as_str(), p.worktree.number))
+        .map(|p| {
+            (
+                p.host.as_str(),
+                p.owner.as_str(),
+                p.name.as_str(),
+                p.worktree.number,
+            )
+        })
         .collect();
     assert_eq!(
         found,
-        [("github.com", "octocat", "a", 7), ("github.com", "octocat", "a", 8)]
+        [
+            ("github.com", "octocat", "a", 7),
+            ("github.com", "octocat", "a", 8)
+        ]
     );
     assert_eq!(pulls[0].worktree.clone_path, "/code/x");
 

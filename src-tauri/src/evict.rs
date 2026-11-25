@@ -64,7 +64,9 @@ async fn remove(
     git.evict_pr_worktree(Path::new(&worktree.clone_path), &dest)
         .await?;
     // The PR's pins stay, so its record does too, for when it closes.
-    store.mark_evicted(worktree.repo_id, worktree.number).await?;
+    store
+        .mark_evicted(worktree.repo_id, worktree.number)
+        .await?;
     Ok(())
 }
 

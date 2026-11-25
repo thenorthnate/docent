@@ -263,6 +263,22 @@ async fn worktrees(
     })
 }
 
+/// Removes the worktrees and pins of PRs that closed or merged. The inbox
+/// runs it on each refresh.
+#[tauri::command]
+async fn remove_closed_worktrees(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<(), CommandError> {
+    let accounts = state.accounts(&store).await;
+    worktrees(&app, &state, &store)
+        .await?
+        .remove_done(accounts)
+        .await;
+    Ok(())
+}
+
 /// The open PRs in an inbox section (`review_requested`, `assigned`,
 /// `authored` or `mentioned`), in watched repos, from every connected host,
 /// newest first. Hosts that couldn't be asked are listed with their errors.
@@ -312,11 +328,17 @@ pub fn run() {
             let store = tauri::async_runtime::block_on(Store::open(&path))?;
             app.manage(store);
             // Reconnect remembered hosts now, off the main thread, so the
-            // window opens without waiting on `gh` or the network.
+            // window opens without waiting on `gh` or the network. Then
+            // remove the worktrees of PRs that closed since the last launch.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let state = handle.state::<AppState>();
-                state.accounts(&handle.state::<Store>()).await;
+                let store = handle.state::<Store>();
+                let accounts = state.accounts(&store).await;
+                match worktrees(&handle, &state, &store).await {
+                    Ok(worktrees) => worktrees.remove_done(accounts).await,
+                    Err(err) => eprintln!("Could not check for closed PRs: {}", err.message),
+                }
             });
             Ok(())
         })
@@ -332,6 +354,7 @@ pub fn run() {
             list_watched_repos,
             open_pr_worktree,
             pull_overview,
+            remove_closed_worktrees,
             unwatch_repo,
             watch_repo
         ])

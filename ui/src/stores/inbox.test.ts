@@ -50,4 +50,38 @@ describe("inbox store", () => {
     expect(inbox.sections.assigned.pulls).toEqual([requested]);
     expect(inbox.loading).toBe(false);
   });
+
+  it("starts removing closed PRs' worktrees on every load, without waiting for it", async () => {
+    const calls: string[] = [];
+    mockIPC((cmd) => {
+      calls.push(cmd);
+      if (cmd === "remove_closed_worktrees") return new Promise(() => {});
+      if (cmd === "list_watched_repos") return [];
+      return { pulls: [], failures: [] };
+    });
+    setActivePinia(createPinia());
+    const inbox = useInboxStore();
+
+    await inbox.load();
+    await inbox.load();
+
+    expect(calls.filter((cmd) => cmd === "remove_closed_worktrees")).toHaveLength(2);
+    expect(inbox.loading).toBe(false);
+  });
+
+  it("still loads when removing closed PRs' worktrees fails", async () => {
+    mockIPC((cmd) => {
+      if (cmd === "remove_closed_worktrees") throw new Error("database failed");
+      if (cmd === "list_watched_repos") return [watchedRepo];
+      return { pulls: [requested], failures: [] };
+    });
+    setActivePinia(createPinia());
+    const inbox = useInboxStore();
+
+    await inbox.load();
+    await flushPromises();
+
+    expect(inbox.selectedSection.pulls).toEqual([requested]);
+    expect(inbox.selectedSection.error).toBeNull();
+  });
 });

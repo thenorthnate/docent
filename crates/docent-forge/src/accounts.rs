@@ -345,9 +345,14 @@ impl Forge for Accounts {
             }
         }
         // Back in the order asked, across hosts.
-        let order: std::collections::HashMap<&PullRef, usize> =
-            pulls.iter().enumerate().map(|(i, pull)| (pull, i)).collect();
-        found.states.sort_by_key(|(pull, _)| order.get(pull).copied());
+        let order: std::collections::HashMap<&PullRef, usize> = pulls
+            .iter()
+            .enumerate()
+            .map(|(i, pull)| (pull, i))
+            .collect();
+        found
+            .states
+            .sort_by_key(|(pull, _)| order.get(pull).copied());
         found
     }
 }
