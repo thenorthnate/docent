@@ -91,6 +91,24 @@ describe("createThemeSetting", () => {
     logged.mockRestore();
   });
 
+  it("still applies the theme when localStorage itself is blocked", () => {
+    const root = document.createElement("html");
+    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+      throw new DOMException("storage disabled", "SecurityError");
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const theme = createThemeSetting({ root, query: fakeDarkQuery(true) });
+      expect(theme.choice.value).toBe("system");
+      expect(root.classList.contains("dark")).toBe(true);
+      theme.set("light");
+      expect(root.classList.contains("dark")).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(logged).toHaveBeenCalled();
+  });
+
   it("switches between choices, saving each and stopping or resuming OS-following", () => {
     const root = document.createElement("html");
     const query = fakeDarkQuery(false);
