@@ -144,7 +144,7 @@ describe("ReviewDrawer", () => {
 
     await router.push(OTHER_PATH);
     await flushPromises();
-    store.select("gone.txt");
+    store.select(FILES[0]);
     answerFirst(FILES);
     await flushPromises();
 

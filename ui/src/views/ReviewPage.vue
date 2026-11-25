@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
+import DiffViewer from "@/components/DiffViewer.vue";
 import PrWorktree from "@/components/PrWorktree.vue";
 import PullOverview from "@/components/PullOverview.vue";
 import { messageOf } from "@/lib/ipc";
@@ -29,6 +30,20 @@ const headSha = ref<string | null>(null);
 /** Counts loads, so only the latest one started may write its answer. */
 let latest = 0;
 
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "changes", label: "Changes" },
+] as const;
+const tab = ref<(typeof TABS)[number]["id"]>("overview");
+
+// Picking a file in the drawer shows its changes.
+watch(
+  () => review.currentFile,
+  (file) => {
+    if (file) tab.value = "changes";
+  },
+);
+
 // Keyed on the PR itself, so a route change that keeps the same PR doesn't refetch.
 watch(
   () => (pr.value ? pullKey(pr.value) : null),
@@ -37,6 +52,7 @@ watch(
     const id = ++latest;
     overview.value = null;
     headSha.value = null;
+    tab.value = "overview";
     error.value = null;
     if (!opened) return;
     loading.value = true;
@@ -123,16 +139,23 @@ watch(
       class="flex gap-4 border-b text-sm"
     >
       <button
+        v-for="item in TABS"
+        :key="item.id"
         role="tab"
-        aria-selected="true"
-        class="-mb-px border-b-2 border-foreground pb-2 font-medium"
+        :aria-selected="tab === item.id"
+        class="-mb-px border-b-2 border-transparent pb-2 text-muted-foreground aria-selected:border-foreground aria-selected:font-medium aria-selected:text-foreground"
+        @click="tab = item.id"
       >
-        Overview
+        {{ item.label }}
       </button>
     </div>
 
+    <DiffViewer
+      v-if="tab === 'changes'"
+      role="tabpanel"
+    />
     <p
-      v-if="error"
+      v-else-if="error"
       role="alert"
       class="text-sm text-destructive"
     >
