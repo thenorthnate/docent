@@ -3,6 +3,7 @@
 
 mod changed_files;
 mod clone;
+mod clone_repo;
 mod error;
 mod remote;
 mod runner;
@@ -11,6 +12,7 @@ mod worktrees_root;
 
 pub use changed_files::{ChangedFile, FileStatus, LineCounts};
 pub use clone::BoundClone;
+pub use clone_repo::CloneProgress;
 pub use error::GitError;
 pub use runner::Git;
 pub use worktree::PrWorktree;

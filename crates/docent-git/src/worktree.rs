@@ -9,10 +9,10 @@ use crate::runner::{NETWORK_TIMEOUT, TIMEOUT};
 use crate::worktrees_root::{PrWorktreePath, resolve};
 use crate::{Git, GitError};
 
-/// Config for every git call here. The clone's own config may name hooks,
+/// Config for every git call here and for cloning. The clone's own config may name hooks,
 /// an fsmonitor or submodules, and PR content is hostile, so none of them
 /// may run: opening a PR runs only git itself.
-const NO_REPO_COMMANDS: [&str; 10] = [
+pub(crate) const NO_REPO_COMMANDS: [&str; 10] = [
     "-c",
     "core.hooksPath=/dev/null",
     "-c",

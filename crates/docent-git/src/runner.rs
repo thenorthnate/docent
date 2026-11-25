@@ -1,9 +1,11 @@
+use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::GitError;
@@ -17,6 +19,8 @@ use crate::GitError;
 #[derive(Debug, Clone)]
 pub struct Git {
     env: Vec<(OsString, OsString)>,
+    /// How long a watched git may print nothing before it is killed.
+    stall_limit: Duration,
 }
 
 /// Parent variables passed on to git, so it finds the user's config and
@@ -36,6 +40,14 @@ pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Long enough for a fetch over a slow network.
 pub(crate) const NETWORK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// How long to wait for more of a finished git's stderr.
+const DRAIN_LIMIT: Duration = Duration::from_millis(200);
+
+/// How much of a watched git's stderr is kept. The other end of a clone can
+/// send any amount of text.
+const MAX_LINES: usize = 20;
+const MAX_LINE_BYTES: usize = 1000;
 
 impl Git {
     /// `path` is the `PATH` to find `git` on, normally the login shell's.
@@ -60,7 +72,30 @@ impl Git {
         env.push(("PATH".into(), path));
         env.push(("GIT_TERMINAL_PROMPT".into(), "0".into()));
         env.push(("GCM_INTERACTIVE".into(), "never".into()));
-        Self { env }
+        Self {
+            env,
+            stall_limit: NETWORK_TIMEOUT,
+        }
+    }
+
+    /// Replaces how long a clone may print nothing. For tests.
+    #[doc(hidden)]
+    pub fn with_stall_limit(mut self, limit: Duration) -> Self {
+        self.stall_limit = limit;
+        self
+    }
+
+    /// `git <args>` in `cwd`, with the scrubbed environment and no input.
+    fn command(&self, cwd: &Path, args: &[&str]) -> Command {
+        let mut command = Command::new("git");
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env_clear()
+            .envs(self.env.iter().map(|(k, v)| (k, v)))
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
+        command
     }
 
     /// Runs `git <args>` in `cwd` and returns its stdout. A failure is
@@ -88,14 +123,7 @@ impl Git {
         args: &[&str],
         timeout: Duration,
     ) -> Result<Vec<u8>, GitError> {
-        let run = Command::new("git")
-            .args(args)
-            .current_dir(cwd)
-            .env_clear()
-            .envs(self.env.iter().map(|(k, v)| (k, v)))
-            .stdin(Stdio::null())
-            .kill_on_drop(true)
-            .output();
+        let run = self.command(cwd, args).output();
         let output = match tokio::time::timeout(timeout, run).await {
             Err(_) => return Err(self.failed(cwd, args, "timed out")),
             Ok(Err(err)) if err.kind() == ErrorKind::NotFound => return Err(GitError::NotFound),
@@ -109,6 +137,68 @@ impl Git {
         Ok(output.stdout)
     }
 
+    /// Runs `git <args>` in `cwd`, for however long it keeps printing to
+    /// stderr. Each line goes to `on_line` as it arrives; ones it returns
+    /// `true` for are progress, and left out of the error if git fails.
+    pub(crate) async fn run_watched(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        mut on_line: impl FnMut(&str) -> bool,
+    ) -> Result<(), GitError> {
+        let spawned = self
+            .command(cwd, args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn();
+        let mut child = match spawned {
+            Err(err) if err.kind() == ErrorKind::NotFound => return Err(GitError::NotFound),
+            Err(err) => return Err(self.failed(cwd, args, &err.to_string())),
+            Ok(child) => child,
+        };
+        let mut stderr = child.stderr.take().expect("stderr was piped above");
+        let mut lines = Lines::default();
+        let mut chunk = [0; 4096];
+        let mut status = None;
+        loop {
+            // Once git has exited, only what it left in the pipe is read: a
+            // process it started (say, ssh connection sharing) may keep the
+            // pipe open.
+            let limit = match status {
+                Some(_) => DRAIN_LIMIT,
+                None => self.stall_limit,
+            };
+            let step = tokio::time::timeout(limit, async {
+                tokio::select! {
+                    read = stderr.read(&mut chunk) => Step::Read(read),
+                    exit = child.wait(), if status.is_none() => Step::Exited(exit),
+                }
+            });
+            match step.await {
+                Ok(Step::Read(Ok(n))) if n > 0 => lines.push(&chunk[..n], &mut on_line),
+                Ok(Step::Read(_)) if status.is_some() => break,
+                // The pipe closed, so git is about to exit.
+                Ok(Step::Read(_)) => {
+                    let exit = tokio::time::timeout(self.stall_limit, child.wait()).await;
+                    status = exit.ok();
+                    break;
+                }
+                Ok(Step::Exited(exit)) => status = Some(exit),
+                Err(_) => break,
+            }
+        }
+        lines.finish(&mut on_line);
+        match status {
+            Some(Ok(status)) if status.success() => Ok(()),
+            Some(Ok(_)) => Err(self.failed(cwd, args, &lines.text())),
+            Some(Err(err)) => Err(self.failed(cwd, args, &err.to_string())),
+            None => {
+                let _ = child.kill().await;
+                Err(self.failed(cwd, args, "it stopped responding"))
+            }
+        }
+    }
+
     /// Logs a failed invocation (never its environment) and builds the error.
     fn failed(&self, cwd: &Path, args: &[&str], why: &str) -> GitError {
         eprintln!(
@@ -117,5 +207,48 @@ impl Git {
             cwd.display()
         );
         GitError::Failed(why.to_string())
+    }
+}
+
+/// What a watched git did next.
+enum Step {
+    Read(std::io::Result<usize>),
+    Exited(std::io::Result<std::process::ExitStatus>),
+}
+
+/// Splits stderr into lines. A progress line ends in a carriage return.
+#[derive(Default)]
+struct Lines {
+    current: Vec<u8>,
+    /// The last lines that weren't progress.
+    kept: VecDeque<String>,
+}
+
+impl Lines {
+    fn push(&mut self, bytes: &[u8], on_line: &mut impl FnMut(&str) -> bool) {
+        for &byte in bytes {
+            if byte == b'\n' || byte == b'\r' {
+                self.finish(on_line);
+            } else if self.current.len() < MAX_LINE_BYTES {
+                self.current.push(byte);
+            }
+        }
+    }
+
+    fn finish(&mut self, on_line: &mut impl FnMut(&str) -> bool) {
+        let bytes = std::mem::take(&mut self.current);
+        let line = String::from_utf8_lossy(&bytes);
+        let line = line.trim();
+        if line.is_empty() || on_line(line) {
+            return;
+        }
+        if self.kept.len() == MAX_LINES {
+            self.kept.pop_front();
+        }
+        self.kept.push_back(line.to_string());
+    }
+
+    fn text(&self) -> String {
+        Vec::from_iter(self.kept.iter().map(String::as_str)).join("\n")
     }
 }

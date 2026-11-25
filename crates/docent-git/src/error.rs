@@ -27,6 +27,18 @@ pub enum GitError {
     InvalidSha(String),
     #[error("The PR's worktree at {0} is gone. Reopen the PR to make it again.")]
     WorktreeMissing(String),
+    #[error("{0:?} isn't a name Docent can clone by. Clone the repo yourself, then use Bind.")]
+    InvalidName(String),
+    #[error(
+        "{0} already exists. If it's your clone, use Bind. Otherwise pick another folder to clone into."
+    )]
+    FolderExists(String),
+    #[error("Docent couldn't create the folder {path}: {why}")]
+    CreateFailed { path: String, why: String },
+    #[error(
+        "git has no working credentials for {host}. Run `gh auth setup-git --hostname {host}`, or set up git's own, then try again. git said: {why}"
+    )]
+    NoCredentials { host: String, why: String },
     #[error("git failed: {0}")]
     Failed(String),
 }
@@ -55,6 +67,10 @@ impl GitError {
             Self::MeasureFailed { .. } => "measure_failed",
             Self::InvalidSha(_) => "invalid_sha",
             Self::WorktreeMissing(_) => "worktree_missing",
+            Self::InvalidName(_) => "invalid_name",
+            Self::FolderExists(_) => "folder_exists",
+            Self::CreateFailed { .. } => "create_failed",
+            Self::NoCredentials { .. } => "no_credentials",
             Self::Failed(_) => "git_failed",
         }
     }
