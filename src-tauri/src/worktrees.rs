@@ -1,4 +1,4 @@
-//! Opening PR worktrees and evicting them, without one undoing the other.
+//! Opening and reading PR worktrees and evicting them, without one undoing the other.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,8 +13,9 @@ use crate::command_error::CommandError;
 use crate::evict::evict;
 use crate::worktree::{self, OpenedPr};
 
-/// Read while a PR's worktree is being opened, written while worktrees are
-/// evicted, so one is never removed as it is opened.
+/// Read while a PR's worktree is being opened or its files listed, written
+/// while worktrees are evicted, so one is never removed while it is in use.
+/// Whatever reads it must end with `evict_soon`.
 pub type InUse = Arc<RwLock<()>>;
 
 /// Docent's worktrees folder, and what working in it needs.
@@ -50,22 +51,32 @@ impl Worktrees {
             )
             .await
         };
-        let worktrees = self.clone();
-        let evicting = tauri::async_runtime::spawn(async move { worktrees.evict_if_idle().await });
-        (opened, evicting)
+        (opened, self.evict_soon())
     }
 
-    /// The files a PR changes, read from its open worktree.
+    /// Lists the files a PR changes from its open worktree, then enforces the
+    /// disk cap in the background. An eviction may have been left to this
+    /// listing, so it evicts after a failed one too.
     pub async fn changed_files(
         &self,
         range: &PullRange,
     ) -> (Result<Vec<ChangedFile>, CommandError>, JoinHandle<()>) {
-        let files = changed_files::changed_files(&self.store, &self.git, &self.root, range).await;
-        (files, tauri::async_runtime::spawn(async {}))
+        let files = {
+            let _listing = self.in_use.read().await;
+            changed_files::changed_files(&self.store, &self.git, &self.root, range).await
+        };
+        (files, self.evict_soon())
     }
 
-    /// Enforces the disk cap, unless a PR is being opened or worktrees are
-    /// already being evicted. Opening ends by evicting, so it is left to that.
+    /// Runs `evict_if_idle` in the background.
+    fn evict_soon(&self) -> JoinHandle<()> {
+        let worktrees = self.clone();
+        tauri::async_runtime::spawn(async move { worktrees.evict_if_idle().await })
+    }
+
+    /// Enforces the disk cap, unless a PR is being opened, its files are being
+    /// listed, or worktrees are already being evicted. Opening and listing end
+    /// by evicting, so it is left to them.
     async fn evict_if_idle(&self) {
         let Ok(_evicting) = self.in_use.try_write() else {
             return;
