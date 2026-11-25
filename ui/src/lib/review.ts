@@ -6,6 +6,8 @@ export type PullOverview = {
   author: string;
   /** Markdown, or `null` when the PR has no description. */
   body: string | null;
+  /** The base branch's tip, as the forge has it for this PR. */
+  base_sha: string;
   ci: CiStatus;
   checks: Check[];
   /** The latest commits, reviews and comments, oldest first. */
@@ -39,4 +41,24 @@ export const CHECK_LABELS: Record<CheckState, string> = {
   failing: "Failed",
   pending: "Pending",
   skipped: "Skipped",
+};
+
+export type FileStatus = "added" | "modified" | "deleted" | "renamed";
+
+/** A file a PR changes, as `changed_files` reports it. Paths came from the PR, so they're shown as text only. */
+export type ChangedFile = {
+  path: string;
+  /** Where a renamed file was before. */
+  old_path: string | null;
+  status: FileStatus;
+  /** `null` for a binary file. */
+  lines: { added: number; deleted: number } | null;
+};
+
+/** How the file tree marks each status. */
+export const FILE_STATUSES: Record<FileStatus, { label: string; letter: string; tone: string }> = {
+  added: { label: "Added", letter: "A", tone: "text-emerald-600 dark:text-emerald-400" },
+  modified: { label: "Modified", letter: "M", tone: "text-amber-600 dark:text-amber-400" },
+  deleted: { label: "Deleted", letter: "D", tone: "text-destructive" },
+  renamed: { label: "Renamed", letter: "R", tone: "text-sky-600 dark:text-sky-400" },
 };
