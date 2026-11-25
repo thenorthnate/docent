@@ -35,4 +35,19 @@ describe("fileTreeRows", () => {
   it("treats names from the PR as plain text", () => {
     expect(rows("__proto__/constructor")).toEqual(["__proto__/", "  constructor"]);
   });
+
+  it("gives look-alike files their own keys", () => {
+    const file = (new_blob: string): ChangedFile => ({
+      path: "src/bad\u{fffd}.txt",
+      old_path: null,
+      status: "added",
+      lines: null,
+      old_blob: null,
+      new_blob,
+    });
+
+    const keys = fileTreeRows([file("1".repeat(40)), file("2".repeat(40))]).map((row) => row.key);
+
+    expect(new Set(keys).size).toBe(3);
+  });
 });
