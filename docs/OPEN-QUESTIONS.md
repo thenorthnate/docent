@@ -211,3 +211,9 @@ GitHub's `review-requested:@me` drops a PR once you review it, and team requests
 | Manual "Waiting on author" | Local only, never written to GitHub. Comes back on author commits, author comments, or a fresh review request after the move. **Back to inbox** undoes it |
 | "Updated since your review" marker | In M1, without counts. The counted badge stays in M4 |
 | Parked idea E3 (re-review on author reply) | Partly taken up: a reply brings the PR back to the inbox. Re-running lenses on a reply stays parked |
+
+### Added while building the Appearance setting (#29)
+
+| Topic | Decision |
+|---|---|
+| Where UI-only preferences live | The webview's `localStorage`, not the settings files or the store. It reads synchronously before Vue mounts, so the app paints with the chosen theme from the start |
