@@ -3,7 +3,14 @@ import { fileTreeRows } from "./fileTree";
 import type { ChangedFile } from "./review";
 
 function rows(...paths: string[]) {
-  const files = paths.map((path): ChangedFile => ({ path, old_path: null, status: "modified", lines: null }));
+  const files = paths.map((path): ChangedFile => ({
+    path,
+    old_path: null,
+    status: "modified",
+    lines: null,
+    old_blob: null,
+    new_blob: null,
+  }));
   return fileTreeRows(files).map((row) => `${"  ".repeat(row.depth)}${row.name}${row.file ? "" : "/"}`);
 }
 

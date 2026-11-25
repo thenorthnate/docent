@@ -12,6 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@codemirror/merge": "^6.12.3",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@lucide/vue": "^1.71.0",
     "@tauri-apps/api": "^2",
     "@vueuse/core": "^14.4.0",
