@@ -46,23 +46,7 @@ impl Git {
         let dest_str = utf8(dest.path())?;
         let head_ref = format!("{}head", pull_refs(remote, number));
         let refspec = format!("+refs/pull/{number}/head:{head_ref}");
-        self.run_hardened(
-            clone,
-            &[
-                "fetch",
-                "--no-tags",
-                "--no-write-fetch-head",
-                "--no-recurse-submodules",
-                // An empty refmap stops the remote's configured refspecs (say,
-                // `refs/pull/*` into `refs/remotes/`) updating the user's refs.
-                "--refmap=",
-                "--end-of-options",
-                remote,
-                &refspec,
-            ],
-            NETWORK_TIMEOUT,
-        )
-        .await?;
+        self.fetch_into(clone, remote, &refspec).await?;
         let sha = self
             .run_hardened(
                 clone,
@@ -154,15 +138,47 @@ impl Git {
         Ok(())
     }
 
+    /// Fetches `refspec` from `remote`, writing only the ref it names.
+    pub(crate) async fn fetch_into(
+        &self,
+        repo: &Path,
+        remote: &str,
+        refspec: &str,
+    ) -> Result<(), GitError> {
+        let args = [
+            "fetch",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            // An empty refmap stops the remote's configured refspecs (say,
+            // `refs/pull/*` into `refs/remotes/`) updating the user's refs.
+            "--refmap=",
+            "--end-of-options",
+            remote,
+            refspec,
+        ];
+        self.run_hardened(repo, &args, NETWORK_TIMEOUT).await?;
+        Ok(())
+    }
+
     /// Runs `git <args>` with [`NO_REPO_COMMANDS`] in front.
-    async fn run_hardened(
+    pub(crate) async fn run_hardened(
         &self,
         cwd: &Path,
         args: &[&str],
         timeout: Duration,
     ) -> Result<String, GitError> {
-        let all: Vec<&str> = NO_REPO_COMMANDS.iter().chain(args).copied().collect();
-        self.run_for(cwd, &all, timeout).await
+        self.run_for(cwd, &hardened(args), timeout).await
+    }
+
+    /// Like [`Git::run_hardened`], for output that may not be UTF-8.
+    pub(crate) async fn run_hardened_bytes(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<Vec<u8>, GitError> {
+        self.run_bytes_for(cwd, &hardened(args), timeout).await
     }
 
     /// Whether `dest` is an existing worktree folder of `clone`.
@@ -186,9 +202,14 @@ impl Git {
     }
 }
 
+/// `args` with [`NO_REPO_COMMANDS`] in front.
+fn hardened<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    NO_REPO_COMMANDS.iter().chain(args).copied().collect()
+}
+
 /// The folder of refs Docent keeps for PR `number` of `remote`, with its
 /// trailing slash.
-fn pull_refs(remote: &str, number: u64) -> String {
+pub(crate) fn pull_refs(remote: &str, number: u64) -> String {
     format!("refs/docent/{remote}/pull/{number}/")
 }
 

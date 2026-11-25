@@ -65,7 +65,10 @@ impl Fixture {
     /// Commits everything in the scratch repo; returns the SHA.
     fn commit(&self) -> String {
         sh_git(&self.work, &["add", "--all"]);
-        sh_git(&self.work, &["commit", "--quiet", "--allow-empty", "-m", "x"]);
+        sh_git(
+            &self.work,
+            &["commit", "--quiet", "--allow-empty", "-m", "x"],
+        );
         sh_git(&self.work, &["rev-parse", "HEAD"])
     }
 
@@ -77,13 +80,17 @@ impl Fixture {
     /// head.
     async fn open_pr(&self) -> String {
         let head = self.commit();
+        self.open_pr_at(&head).await;
+        head
+    }
+
+    async fn open_pr_at(&self, head: &str) {
         let refspec = format!("{head}:refs/pull/7/head");
         sh_git(&self.work, &["push", "--quiet", "origin", &refspec]);
         git()
             .open_pr_worktree(&self.clone, "origin", &self.dest())
             .await
             .expect("opens");
-        head
     }
 
     /// `main` as the clone last fetched it.
@@ -92,7 +99,9 @@ impl Fixture {
     }
 
     async fn changed(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>, GitError> {
-        git().changed_files("origin", &self.dest(), base, head).await
+        git()
+            .changed_files("origin", &self.dest(), base, head)
+            .await
     }
 }
 
@@ -136,8 +145,162 @@ async fn lists_each_file_with_its_status_and_line_counts() {
         ]
     );
     let stat = sh_git(&f.clone, &["diff", "--shortstat", &f.main(), &head]);
+    assert_eq!(stat, "4 files changed, 4 insertions(+), 5 deletions(-)");
+}
+
+/// Commits made to the base branch after the PR branched aren't the PR's.
+/// The clone doesn't have them, so the base must be fetched, without
+/// touching the user's refs.
+#[tokio::test]
+async fn a_base_that_moved_on_is_fetched_and_its_commits_left_out() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    f.write("pr.txt", b"pr\n");
+    let head = f.open_pr().await;
+    sh_git(&f.work, &["reset", "--quiet", "--hard", "HEAD~1"]);
+    f.write("base.txt", b"base\n");
+    let base = f.commit();
+    sh_git(&f.work, &["push", "--quiet", "origin", "main"]);
+    let user_refs = ["for-each-ref", "refs/heads", "refs/remotes", "refs/tags"];
+    let before = sh_git(&f.clone, &user_refs);
+
+    let changed = f.changed(&base, &head).await.expect("lists");
+
+    assert_eq!(changed, [file(FileStatus::Added, "pr.txt", 1, 0)]);
+    assert_eq!(sh_git(&f.clone, &user_refs), before);
+    git()
+        .remove_pr_worktree(&f.clone, "origin", &f.dest())
+        .await
+        .expect("removes");
+    let pins = sh_git(&f.clone, &["for-each-ref", "refs/docent"]);
+    assert_eq!(pins, "", "the base's pin outlived the PR's worktree");
+}
+
+#[tokio::test]
+async fn binary_files_have_no_line_counts_and_odd_names_come_back_whole() {
+    let f = Fixture::new(&[(":old\tname", b"1\n2\n3\n")]);
+    std::fs::rename(f.work.join(":old\tname"), f.work.join("new\n\"name\" é")).unwrap();
+    f.write("blob.bin", b"\0\x01\x02");
+    f.write("empty", b"");
+    let head = f.open_pr().await;
+
+    let changed = f.changed(&f.main(), &head).await.expect("lists");
+
+    let blob = ChangedFile {
+        lines: None,
+        ..file(FileStatus::Added, "blob.bin", 0, 0)
+    };
+    let renamed = ChangedFile {
+        old_path: Some(":old\tname".to_string()),
+        ..file(FileStatus::Renamed, "new\n\"name\" é", 0, 0)
+    };
     assert_eq!(
-        stat,
-        "4 files changed, 4 insertions(+), 5 deletions(-)"
+        changed,
+        [blob, file(FileStatus::Added, "empty", 0, 0), renamed]
     );
+}
+
+/// macOS won't create such a file, so git's index does.
+#[tokio::test]
+async fn a_name_that_is_not_utf8_does_not_fail_the_list() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let blob = sh_git(&f.work, &["rev-parse", "HEAD:a.txt"]);
+    let mut entry = format!("100644,{blob},").into_bytes();
+    entry.extend(b"bad\xff.txt");
+    let added = Command::new("git")
+        .args(["update-index", "--add", "--cacheinfo"])
+        .arg(std::ffi::OsString::from_vec(entry))
+        .current_dir(&f.work)
+        .status();
+    assert!(added.expect("run git").success());
+    sh_git(&f.work, &["commit", "--quiet", "-m", "x"]);
+    let head = sh_git(&f.work, &["rev-parse", "HEAD"]);
+    // Never checked out: this only needs the PR's objects and a worktree.
+    f.open_pr_at(&f.main()).await;
+    sh_git(
+        &f.work,
+        &["push", "--quiet", "origin", &format!("{head}:refs/x/y")],
+    );
+    sh_git(&f.clone, &["fetch", "--quiet", "origin", "refs/x/y"]);
+
+    let changed = f.changed(&f.main(), &head).await.expect("lists");
+
+    assert_eq!(changed, [file(FileStatus::Added, "bad\u{fffd}.txt", 1, 0)]);
+}
+
+/// PR content is hostile: an attribute in it must not run a diff command,
+/// nor a hook or fsmonitor, that the clone's config names.
+#[tokio::test]
+async fn listing_runs_none_of_the_clones_configured_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    f.write("a.txt", b"b\n");
+    f.write(".gitattributes", b"* diff=evil filter=evil\n");
+    let head = f.open_pr().await;
+    // A base to fetch, which could run hooks too.
+    sh_git(&f.work, &["reset", "--quiet", "--hard", "HEAD~1"]);
+    let base = f.commit();
+    sh_git(&f.work, &["push", "--quiet", "origin", "main"]);
+    let marker = f.root.path().join("PWNED");
+    let script = f.clone.join(".git/evil.sh");
+    let body = format!("#!/bin/sh\ntouch '{}'\n", marker.display());
+    std::fs::write(&script, body).unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::copy(&script, f.clone.join(".git/hooks/reference-transaction")).unwrap();
+    for key in [
+        "core.fsmonitor",
+        "diff.external",
+        "diff.evil.command",
+        "diff.evil.textconv",
+        "filter.evil.clean",
+        "filter.evil.smudge",
+    ] {
+        sh_git(&f.clone, &["config", key, script.to_str().unwrap()]);
+    }
+
+    f.changed(&base, &head).await.expect("lists");
+
+    assert!(!marker.exists(), "a clone-configured command ran");
+}
+
+/// The SHAs come through the UI, so anything else is refused before git
+/// could read it as an option, a refspec or another ref.
+#[tokio::test]
+async fn anything_but_a_full_sha_is_refused() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let head = f.open_pr().await;
+    let short = &head[..12];
+    let refspec = format!("{head}:refs/heads/evil");
+
+    for bad in ["", "main", "HEAD", "--output=x", short, &refspec] {
+        for (base, head) in [(bad, head.as_str()), (head.as_str(), bad)] {
+            let err = f.changed(base, head).await.unwrap_err();
+            assert_eq!(err, GitError::InvalidSha(bad.to_string()));
+        }
+    }
+}
+
+/// A worktree swapped for a symlink could lead to a repo that isn't the PR's.
+#[tokio::test]
+async fn a_symlinked_worktree_is_refused() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let head = f.open_pr().await;
+    std::fs::remove_dir_all(f.dest().path()).unwrap();
+    std::os::unix::fs::symlink(&f.clone, f.dest().path()).unwrap();
+
+    let err = f.changed(&f.main(), &head).await.unwrap_err();
+
+    assert_eq!(err.kind(), "outside_worktrees");
+}
+
+/// A missing folder must not be reported as a missing `git`.
+#[tokio::test]
+async fn a_worktree_that_is_gone_says_so() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+
+    let err = f.changed(&f.main(), &f.main()).await.unwrap_err();
+
+    assert_eq!(err.kind(), "worktree_missing");
 }

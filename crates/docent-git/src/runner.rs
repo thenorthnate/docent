@@ -76,6 +76,18 @@ impl Git {
         args: &[&str],
         timeout: Duration,
     ) -> Result<String, GitError> {
+        let stdout = self.run_bytes_for(cwd, args, timeout).await?;
+        String::from_utf8(stdout).map_err(|_| self.failed(cwd, args, "output was not UTF-8"))
+    }
+
+    /// Like [`Git::run_for`], for output that may not be UTF-8, such as file
+    /// names.
+    pub(crate) async fn run_bytes_for(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<Vec<u8>, GitError> {
         let run = Command::new("git")
             .args(args)
             .current_dir(cwd)
@@ -94,7 +106,7 @@ impl Git {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(self.failed(cwd, args, stderr.trim()));
         }
-        String::from_utf8(output.stdout).map_err(|_| self.failed(cwd, args, "output was not UTF-8"))
+        Ok(output.stdout)
     }
 
     /// Logs a failed invocation (never its environment) and builds the error.
