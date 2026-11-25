@@ -10,7 +10,7 @@ use docent_forge::{
     Accounts, Check, CheckState, CiStatus, Forge, PullOverview, RepoError, ReviewVerdict,
     TimelineItem,
 };
-use wiremock::matchers::{body_partial_json, header, method, path};
+use wiremock::matchers::{body_partial_json, body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const TOKEN: &str = "gho_secret_a";
@@ -24,6 +24,8 @@ async fn overview_answer(server: &MockServer, graphql_path: &str, response: Resp
         .and(body_partial_json(serde_json::json!({
             "variables": { "owner": "octocat", "name": "Hello-World", "number": 1347 }
         })))
+        // Without this in the query, GitHub wouldn't send it.
+        .and(body_string_contains("baseRefOid"))
         .respond_with(response)
         .mount(server)
         .await;
@@ -71,6 +73,7 @@ async fn the_overview_carries_description_checks_and_timeline() {
             title: "Fix the greeting".to_string(),
             author: "mona".to_string(),
             body: Some("Say hello **properly**.\n\nFixes #12.".to_string()),
+            base_sha: "762941318ee16e59dabbacb1b4049eec22f0d303".to_string(),
             ci: CiStatus::Failing,
             checks: vec![
                 check("build", CheckState::Passing),
@@ -214,6 +217,7 @@ async fn a_long_timeline_is_marked_truncated_and_unknown_events_are_skipped() {
         "title": "Fix the greeting",
         "body": "",
         "author": null,
+        "baseRefOid": "762941318ee16e59dabbacb1b4049eec22f0d303",
         "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] },
         "timelineItems": {
             "pageInfo": { "hasPreviousPage": true },

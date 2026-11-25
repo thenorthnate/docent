@@ -15,7 +15,7 @@ use crate::{
 /// comments matter most.
 const QUERY: &str = "query($owner: String!, $name: String!, $number: Int!) { \
     repository(owner: $owner, name: $name) { pullRequest(number: $number) { \
-    title body author { login } \
+    title body baseRefOid author { login } \
     commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { \
         __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } } \
     timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, PULL_REQUEST_REVIEW, ISSUE_COMMENT]) { \
@@ -63,6 +63,7 @@ struct Repository {
 struct PullNode {
     title: String,
     body: String,
+    base_ref_oid: String,
     author: Option<Actor>,
     commits: Nodes<CommitNode>,
     timeline_items: Timeline,
@@ -291,6 +292,7 @@ impl PullNode {
             title: self.title,
             author: login(self.author),
             body: non_blank(self.body),
+            base_sha: self.base_ref_oid,
             ci,
             checks,
             timeline: self

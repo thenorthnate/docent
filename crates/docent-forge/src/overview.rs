@@ -11,6 +11,9 @@ pub struct PullOverview {
     pub author: String,
     /// The description as Markdown, or `None` when it is empty.
     pub body: Option<String>,
+    /// The base branch's tip, as the forge has it for this PR. Stays right
+    /// after the PR merges, when the branch itself has moved on.
+    pub base_sha: String,
     /// The combined state of the head commit's checks.
     pub ci: CiStatus,
     /// The head commit's checks, in the forge's order.
