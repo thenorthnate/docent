@@ -320,6 +320,7 @@ ACP gives Docent no way to read an agent's settings; Inherit mode works by not o
 ### 5.7 Worktree lifecycle (M1)
 
 - Fetch PR heads, including `refs/pull/N/head` for forks, into `refs/docent/*` only. Old SHAs stay reachable for interdiffs after a force-push.
+- A PR's diff runs from the merge base of its head and the base SHA the forge gives for it, not the base branch, whose tip contains the head once the PR merges. A base the clone lacks is fetched by SHA, also into `refs/docent/*`.
 - Check out in detached HEAD, so your branches stay clean.
 - Delete a worktree when its PR closes or merges, and enforce a disk cap with least-recently-used eviction.
 
