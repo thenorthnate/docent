@@ -54,6 +54,7 @@ mod tests {
             title: "Fix the greeting".to_string(),
             author: "mona".to_string(),
             body: None,
+            base_sha: "6dcb09b5b57875f334f61aebed695e2e4193db5e".to_string(),
             ci: CiStatus::Passing,
             checks: vec![],
             timeline: vec![],

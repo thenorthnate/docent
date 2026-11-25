@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { createPinia } from "pinia";
 import { createMemoryHistory } from "vue-router";
 import ReviewPage from "./ReviewPage.vue";
 import { createAppRouter } from "@/router";
@@ -13,6 +14,7 @@ function overview(overrides: Partial<PullOverview> = {}): PullOverview {
     title: "Fix the greeting",
     author: "mona",
     body: "Say hello **properly**.",
+    base_sha: "b".repeat(40),
     ci: "failing",
     checks: [
       { name: "build", state: "passing" },
@@ -67,7 +69,7 @@ async function mountPage(
   const router = createAppRouter(createMemoryHistory());
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(ReviewPage, { global: { plugins: [router] }, attachTo: document.body });
+  const wrapper = mount(ReviewPage, { global: { plugins: [createPinia(), router] }, attachTo: document.body });
   await flushPromises();
   return { wrapper, router, asked };
 }

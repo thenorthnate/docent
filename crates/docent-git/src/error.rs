@@ -23,6 +23,10 @@ pub enum GitError {
     ClearFailed { path: String, why: String },
     #[error("Docent couldn't measure the worktree at {path}: {why}")]
     MeasureFailed { path: String, why: String },
+    #[error("{0:?} isn't a full commit SHA. Report this as a bug.")]
+    InvalidSha(String),
+    #[error("The PR's worktree at {0} is gone. Reopen the PR to make it again.")]
+    WorktreeMissing(String),
     #[error("git failed: {0}")]
     Failed(String),
 }
@@ -49,6 +53,8 @@ impl GitError {
             Self::OutsideWorktrees(_) => "outside_worktrees",
             Self::ClearFailed { .. } => "clear_failed",
             Self::MeasureFailed { .. } => "measure_failed",
+            Self::InvalidSha(_) => "invalid_sha",
+            Self::WorktreeMissing(_) => "worktree_missing",
             Self::Failed(_) => "git_failed",
         }
     }

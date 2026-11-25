@@ -5,6 +5,7 @@
         "title": "Fix the greeting",
         "body": "Say hello **properly**.\n\nFixes #12.",
         "author": { "login": "mona" },
+        "baseRefOid": "762941318ee16e59dabbacb1b4049eec22f0d303",
         "commits": {
           "nodes": [
             {

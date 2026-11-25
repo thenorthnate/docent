@@ -7,8 +7,10 @@ import PullOverview from "@/components/PullOverview.vue";
 import { messageOf } from "@/lib/ipc";
 import { CI_ICONS, CI_LABELS, pullKey } from "@/lib/pull";
 import type { PullOverview as Overview } from "@/lib/review";
+import { useReviewStore } from "@/stores/review";
 
 const route = useRoute();
+const review = useReviewStore();
 
 /** The opened PR, from the `review-pr` route; `null` on plain `/review`. */
 const pr = computed(() => {
@@ -21,6 +23,9 @@ const overview = ref<Overview | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(false);
 
+/** The head the PR's worktree is at, once it's ready. */
+const headSha = ref<string | null>(null);
+
 /** Counts loads, so only the latest one started may write its answer. */
 let latest = 0;
 
@@ -31,6 +36,7 @@ watch(
     const opened = pr.value;
     const id = ++latest;
     overview.value = null;
+    headSha.value = null;
     error.value = null;
     if (!opened) return;
     loading.value = true;
@@ -42,6 +48,15 @@ watch(
     } finally {
       if (id === latest) loading.value = false;
     }
+  },
+  { immediate: true },
+);
+
+// The drawer's files: known once the forge has given the base and the worktree the head.
+watch(
+  [() => (pr.value ? pullKey(pr.value) : null), () => overview.value?.base_sha, headSha],
+  ([, base_sha, head_sha]) => {
+    void review.show(pr.value && base_sha && head_sha ? { ...pr.value, base_sha, head_sha } : null);
   },
   { immediate: true },
 );
@@ -100,6 +115,7 @@ watch(
       :owner="pr.owner"
       :repo="pr.repo"
       :number="pr.number"
+      @ready="headSha = $event"
     />
 
     <div

@@ -1,19 +1,21 @@
-//! Opening PR worktrees and evicting them, without one undoing the other.
+//! Opening and reading PR worktrees and evicting them, without one undoing the other.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use docent_git::Git;
+use docent_git::{ChangedFile, Git};
 use docent_store::Store;
 use tauri::async_runtime::JoinHandle;
 use tokio::sync::RwLock;
 
+use crate::changed_files::{self, PullRange};
 use crate::command_error::CommandError;
 use crate::evict::evict;
 use crate::worktree::{self, OpenedPr};
 
-/// Read while a PR's worktree is being opened, written while worktrees are
-/// evicted, so one is never removed as it is opened.
+/// Read while a PR's worktree is being opened or its files listed, written
+/// while worktrees are evicted, so one is never removed while it is in use.
+/// Whatever reads it must end with `evict_soon`.
 pub type InUse = Arc<RwLock<()>>;
 
 /// Docent's worktrees folder, and what working in it needs.
@@ -49,13 +51,32 @@ impl Worktrees {
             )
             .await
         };
-        let worktrees = self.clone();
-        let evicting = tauri::async_runtime::spawn(async move { worktrees.evict_if_idle().await });
-        (opened, evicting)
+        (opened, self.evict_soon())
     }
 
-    /// Enforces the disk cap, unless a PR is being opened or worktrees are
-    /// already being evicted. Opening ends by evicting, so it is left to that.
+    /// Lists the files a PR changes from its open worktree, then enforces the
+    /// disk cap in the background. An eviction may have been left to this
+    /// listing, so it evicts after a failed one too.
+    pub async fn changed_files(
+        &self,
+        range: &PullRange,
+    ) -> (Result<Vec<ChangedFile>, CommandError>, JoinHandle<()>) {
+        let files = {
+            let _listing = self.in_use.read().await;
+            changed_files::changed_files(&self.store, &self.git, &self.root, range).await
+        };
+        (files, self.evict_soon())
+    }
+
+    /// Runs `evict_if_idle` in the background.
+    fn evict_soon(&self) -> JoinHandle<()> {
+        let worktrees = self.clone();
+        tauri::async_runtime::spawn(async move { worktrees.evict_if_idle().await })
+    }
+
+    /// Enforces the disk cap, unless a PR is being opened, its files are being
+    /// listed, or worktrees are already being evicted. Opening and listing end
+    /// by evicting, so it is left to them.
     async fn evict_if_idle(&self) {
         let Ok(_evicting) = self.in_use.try_write() else {
             return;
@@ -170,6 +191,22 @@ mod tests {
         opened
     }
 
+    /// Lists PR 1's files from a base its clone doesn't have, so it is fetched,
+    /// and waits for the eviction after it.
+    async fn list(worktrees: Worktrees) -> Result<Vec<ChangedFile>, CommandError> {
+        let range = PullRange {
+            host: "github.com".into(),
+            owner: "octocat".into(),
+            repo: "Hello-World".into(),
+            number: 1,
+            base_sha: "1".repeat(40),
+            head_sha: "2".repeat(40),
+        };
+        let (files, evicting) = worktrees.changed_files(&range).await;
+        evicting.await.expect("eviction finishes");
+        files
+    }
+
     async fn wait_for(path: &Path) {
         for _ in 0..600 {
             if path.exists() {
@@ -235,6 +272,57 @@ mod tests {
         drop(evicting);
         opening.await.unwrap().expect("opens");
         assert!(f.folder(1).exists());
+    }
+
+    /// The denial: while PR 1's files are being listed, nothing is removed,
+    /// even far over the cap. The skipped eviction then runs once the listing
+    /// is done, though it fails.
+    #[tokio::test]
+    async fn nothing_is_evicted_while_files_are_being_listed_only_after() {
+        let f = Fixture::new().await;
+        f.open(1).await.expect("opens");
+        f.open(2).await.expect("opens");
+        f.cap(0).await;
+        let (started, go) = (f.marker("started"), f.marker("go"));
+        f.ssh_runs(&format!(
+            "touch {}; while [ ! -e {} ]; do sleep 0.05; done; exit 1",
+            started.display(),
+            go.display()
+        ));
+        let listing = tokio::spawn(list(f.worktrees.clone()));
+        wait_for(&started).await;
+
+        f.worktrees.evict_if_idle().await;
+
+        assert!(f.folder(1).exists(), "evicted during a listing");
+        std::fs::write(&go, "").expect("let the fetch go on");
+        listing.await.unwrap().expect_err("the fetch fails");
+        assert!(!f.folder(1).exists(), "the skipped eviction never ran");
+        assert!(f.folder(2).exists(), "the newest stays");
+    }
+
+    /// The other half of the denial. The worktree is gone by the time the
+    /// listing may start, so it says to reopen the PR.
+    #[tokio::test]
+    async fn a_listing_waits_for_an_eviction_and_says_if_its_worktree_went() {
+        let f = Fixture::new().await;
+        f.open(1).await.expect("opens");
+        f.open(2).await.expect("opens");
+        f.cap(0).await;
+        let evicting = f.worktrees.in_use.write().await;
+        let listing = tokio::spawn(list(f.worktrees.clone()));
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert!(!listing.is_finished(), "listed during an eviction");
+        evict(&f.worktrees.store, &f.worktrees.git, &f.worktrees.root)
+            .await
+            .expect("evicts");
+        assert!(!f.folder(1).exists());
+        drop(evicting);
+        let err = listing.await.unwrap().expect_err("nothing to list");
+        assert_eq!(err.kind, "worktree_missing");
+        assert!(err.message.contains("Reopen the PR"), "{}", err.message);
     }
 
     /// PR 1's folder is a symlink, so evicting it is refused.

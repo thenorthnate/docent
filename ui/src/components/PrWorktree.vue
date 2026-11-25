@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/ipc";
 
 const props = defineProps<{ host: string; owner: string; repo: string; number: number }>();
+const emit = defineEmits<{ ready: [headSha: string] }>();
 
 /** A watched repo, as the Rust core reports it. */
 type WatchedRepo = { id: number; owner: string; name: string; local_path: string | null };
@@ -31,7 +32,9 @@ async function open() {
       repo: props.repo,
       number: props.number,
     });
-    if (request === latest) state.value = opened;
+    if (request !== latest) return;
+    state.value = opened;
+    if (opened.status === "ready") emit("ready", opened.head_sha);
   } catch (err) {
     if (request === latest) state.value = { status: "error", message: messageOf(err) };
   }

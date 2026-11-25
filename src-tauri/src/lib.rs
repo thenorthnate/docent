@@ -1,4 +1,5 @@
 mod bind;
+mod changed_files;
 mod command_error;
 mod evict;
 mod inbox;
@@ -15,7 +16,7 @@ use std::time::Duration;
 
 use command_error::CommandError;
 use docent_forge::{AccountSummary, Accounts, GhCli, PullOverview, Section, SectionPulls};
-use docent_git::Git;
+use docent_git::{ChangedFile, Git};
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -170,23 +171,44 @@ async fn open_pr_worktree(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<worktree::OpenedPr, CommandError> {
-    let root = app
-        .path()
-        .app_data_dir()
-        .map_err(|err| CommandError {
-            kind: "invalid_path",
-            message: format!("Docent couldn't find its data folder: {err}"),
-        })?
-        .join("worktrees");
-    let worktrees = Worktrees {
-        in_use: state.worktrees_in_use.clone(),
-        store: store.inner().clone(),
-        git: state.git().await,
-        root,
-    };
+    let worktrees = worktrees(&app, &state, &store).await?;
     // The eviction carries on in the background.
     let (opened, _evicting) = worktrees.open(&host, &owner, &repo, number).await;
     opened
+}
+
+/// The files a PR changes, from its merge base to its head, read from its
+/// open worktree.
+#[tauri::command]
+async fn changed_files(
+    range: changed_files::PullRange,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<Vec<ChangedFile>, CommandError> {
+    let worktrees = worktrees(&app, &state, &store).await?;
+    // The eviction carries on in the background.
+    let (files, _evicting) = worktrees.changed_files(&range).await;
+    files
+}
+
+/// The folder in Docent's data folder that holds every PR worktree, and what
+/// working in it needs.
+async fn worktrees(
+    app: &AppHandle,
+    state: &AppState,
+    store: &Store,
+) -> Result<Worktrees, CommandError> {
+    let data = app.path().app_data_dir().map_err(|err| CommandError {
+        kind: "invalid_path",
+        message: format!("Docent couldn't find its data folder: {err}"),
+    })?;
+    Ok(Worktrees {
+        in_use: state.worktrees_in_use.clone(),
+        store: store.clone(),
+        git: state.git().await,
+        root: data.join("worktrees"),
+    })
 }
 
 /// The open PRs in an inbox section (`review_requested`, `assigned`,
@@ -249,6 +271,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_version,
             bind_repo,
+            changed_files,
             connect_host,
             list_accounts,
             list_section,

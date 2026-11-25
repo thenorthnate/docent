@@ -188,6 +188,13 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 | Markdown rendering | `markdown-it` with `html: false`: raw HTML shows as text. It is the only path from forge content to `v-html` |
 | Timeline and checks | The latest 100 timeline events (the newest reviews matter most) and the first 100 checks, from one GraphQL query. A longer timeline says it was cut short |
 
+### Added while building the changed-files tree (#22)
+
+| Topic | Decision |
+|---|---|
+| Base of a PR's diff | The merge base of the head and GitHub's `baseRefOid`, not the base branch's tip. The branch contains the head once the PR merges, and may be deleted |
+| Listing changed files | `git diff-tree` plumbing with rename detection, so the user's `diff.*` settings don't change the list |
+
 ### Added while designing the review lifecycle
 
 GitHub's `review-requested:@me` drops a PR once you review it, and team requests vanish when a teammate picks them up, so PRs disappeared from the inbox while still needing you. See the review lifecycle in `PLAN.md` 5.2.
