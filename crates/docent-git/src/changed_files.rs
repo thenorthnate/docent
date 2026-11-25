@@ -56,8 +56,10 @@ impl Git {
         }
         dest.check_inside()?;
         let worktree = dest.path();
-        // In any other folder, git would act on whatever repo is above it.
-        if !self.is_worktree_of(clone, worktree).await? {
+        // Without its `.git` file, git would act on whatever repo is above the
+        // folder. The clone lists a worktree whose file is gone all the same.
+        let linked = worktree.join(".git").is_file();
+        if !linked || !self.is_worktree_of(clone, worktree).await? {
             return Err(GitError::WorktreeMissing(worktree.display().to_string()));
         }
         // A partial clone fetches the objects it lacks as each of these asks for
