@@ -2,16 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import SettingsPage from "./SettingsPage.vue";
-import { createThemeSetting, themeSettingKey } from "@/theme";
+import { themeSettingKey } from "@/theme";
+import { testThemeSetting } from "@/theme.testing";
 
-/** Mounts the page with a theme setting that follows a light OS. */
 function mountPage() {
-  const theme = createThemeSetting({
-    root: document.createElement("html"),
-    query: { matches: false, addEventListener: () => {}, removeEventListener: () => {} },
-    storage: { getItem: () => null, setItem: () => {} },
-  });
-  return mount(SettingsPage, { global: { provide: { [themeSettingKey]: theme } } });
+  return mount(SettingsPage, { global: { provide: { [themeSettingKey]: testThemeSetting() } } });
 }
 
 afterEach(() => {

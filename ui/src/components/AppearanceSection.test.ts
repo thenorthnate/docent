@@ -2,29 +2,13 @@ import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import AppearanceSection from "./AppearanceSection.vue";
 import { createThemeSetting, THEME_STORAGE_KEY, themeSettingKey } from "@/theme";
-
-/** A stand-in for `matchMedia("(prefers-color-scheme: dark)")` we can flip. */
-function fakeDarkQuery(matches: boolean) {
-  const listeners = new Set<(event: { matches: boolean }) => void>();
-  return {
-    matches,
-    addEventListener: (_: "change", fn: (event: { matches: boolean }) => void) => listeners.add(fn),
-    removeEventListener: (_: "change", fn: (event: { matches: boolean }) => void) => listeners.delete(fn),
-    change(next: boolean) {
-      this.matches = next;
-      listeners.forEach((fn) => fn({ matches: next }));
-    },
-  };
-}
+import { fakeDarkQuery, fakeStorage } from "@/theme.testing";
 
 function setup({ stored, osDark = false }: { stored?: string; osDark?: boolean } = {}) {
   const root = document.createElement("html");
   const query = fakeDarkQuery(osDark);
-  const items = new Map<string, string>(stored ? [[THEME_STORAGE_KEY, stored]] : []);
-  const storage = {
-    getItem: (key: string) => items.get(key) ?? null,
-    setItem: (key: string, value: string) => void items.set(key, value),
-  };
+  const storage = fakeStorage(stored ? { [THEME_STORAGE_KEY]: stored } : {});
+  const items = storage.items;
   const theme = createThemeSetting({ root, query, storage });
   const wrapper = mount(AppearanceSection, { global: { provide: { [themeSettingKey]: theme } } });
   return { wrapper, root, query, items, isDark: () => root.classList.contains("dark") };

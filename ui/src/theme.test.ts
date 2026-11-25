@@ -1,19 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createThemeSetting, followSystemTheme, THEME_STORAGE_KEY } from "./theme";
-
-/** A stand-in for `matchMedia("(prefers-color-scheme: dark)")` we can flip. */
-function fakeDarkQuery(matches: boolean) {
-  const listeners = new Set<(event: { matches: boolean }) => void>();
-  return {
-    matches,
-    addEventListener: (_: "change", fn: (event: { matches: boolean }) => void) => listeners.add(fn),
-    removeEventListener: (_: "change", fn: (event: { matches: boolean }) => void) => listeners.delete(fn),
-    change(next: boolean) {
-      this.matches = next;
-      listeners.forEach((fn) => fn({ matches: next }));
-    },
-  };
-}
+import { fakeDarkQuery, fakeStorage } from "./theme.testing";
 
 describe("followSystemTheme", () => {
   it("uses the dark tokens when the system prefers dark", () => {
@@ -44,16 +31,6 @@ describe("followSystemTheme", () => {
     expect(root.classList.contains("dark")).toBe(false);
   });
 });
-
-/** An in-memory stand-in for `localStorage`. */
-function fakeStorage(initial: Record<string, string> = {}) {
-  const items = new Map(Object.entries(initial));
-  return {
-    getItem: (key: string) => items.get(key) ?? null,
-    setItem: (key: string, value: string) => void items.set(key, value),
-    items,
-  };
-}
 
 describe("createThemeSetting", () => {
   it("defaults to System and follows the OS live", () => {

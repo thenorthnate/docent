@@ -5,6 +5,8 @@ import { createMemoryHistory } from "vue-router";
 import { createPinia } from "pinia";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
+import { themeSettingKey } from "./theme";
+import { testThemeSetting } from "./theme.testing";
 
 beforeEach(() => {
   mockIPC((cmd) => {
@@ -24,7 +26,7 @@ async function mountApp(path = "/") {
   await router.push(path);
   await router.isReady();
   const wrapper = mount(App, {
-    global: { plugins: [router, createPinia()] },
+    global: { plugins: [router, createPinia()], provide: { [themeSettingKey]: testThemeSetting() } },
   });
   await flushPromises();
   return { wrapper, router };
