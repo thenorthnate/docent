@@ -5,8 +5,10 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
+use rustix::process::{Pid, Signal, kill_process_group};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
+use tokio::time::Instant;
 
 use crate::GitError;
 
@@ -40,6 +42,22 @@ pub(crate) const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Long enough for a fetch over a slow network.
 pub(crate) const NETWORK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// Config for every git call on a PR worktree, and for cloning. The clone's own config may name hooks,
+/// an fsmonitor or submodules, and PR content is hostile, so none of them
+/// may run: opening a PR runs only git itself.
+pub(crate) const NO_REPO_COMMANDS: [&str; 10] = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "gc.auto=0",
+    "-c",
+    "maintenance.auto=false",
+    "-c",
+    "submodule.recurse=false",
+];
 
 /// How long to wait for more of a finished git's stderr.
 const DRAIN_LIMIT: Duration = Duration::from_millis(200);
@@ -150,6 +168,10 @@ impl Git {
             .command(cwd, args)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
+            // Its messages are matched and shown, so not in the user's language.
+            .env("LC_ALL", "C")
+            // Its own group, so ssh and the like can be killed with it.
+            .process_group(0)
             .spawn();
         let mut child = match spawned {
             Err(err) if err.kind() == ErrorKind::NotFound => return Err(GitError::NotFound),
@@ -160,22 +182,24 @@ impl Git {
         let mut lines = Lines::default();
         let mut chunk = [0; 4096];
         let mut status = None;
+        let mut deadline = Instant::now() + self.stall_limit;
         loop {
             // Once git has exited, only what it left in the pipe is read: a
             // process it started (say, ssh connection sharing) may keep the
             // pipe open.
-            let limit = match status {
-                Some(_) => DRAIN_LIMIT,
-                None => self.stall_limit,
-            };
-            let step = tokio::time::timeout(limit, async {
+            let step = tokio::time::timeout_at(deadline, async {
                 tokio::select! {
                     read = stderr.read(&mut chunk) => Step::Read(read),
                     exit = child.wait(), if status.is_none() => Step::Exited(exit),
                 }
             });
             match step.await {
-                Ok(Step::Read(Ok(n))) if n > 0 => lines.push(&chunk[..n], &mut on_line),
+                Ok(Step::Read(Ok(n))) if n > 0 => {
+                    lines.push(&chunk[..n], &mut on_line);
+                    if status.is_none() {
+                        deadline = Instant::now() + self.stall_limit;
+                    }
+                }
                 Ok(Step::Read(_)) if status.is_some() => break,
                 // The pipe closed, so git is about to exit.
                 Ok(Step::Read(_)) => {
@@ -183,7 +207,10 @@ impl Git {
                     status = exit.ok();
                     break;
                 }
-                Ok(Step::Exited(exit)) => status = Some(exit),
+                Ok(Step::Exited(exit)) => {
+                    status = Some(exit);
+                    deadline = Instant::now() + DRAIN_LIMIT;
+                }
                 Err(_) => break,
             }
         }
@@ -193,6 +220,11 @@ impl Git {
             Some(Ok(_)) => Err(self.failed(cwd, args, &lines.text())),
             Some(Err(err)) => Err(self.failed(cwd, args, &err.to_string())),
             None => {
+                // Not reaped yet, so its id can't belong to anything else.
+                let group = child.id().and_then(|id| Pid::from_raw(id.cast_signed()));
+                if let Some(group) = group {
+                    let _ = kill_process_group(group, Signal::KILL);
+                }
                 let _ = child.kill().await;
                 Err(self.failed(cwd, args, "it stopped responding"))
             }
@@ -250,5 +282,42 @@ impl Lines {
 
     fn text(&self) -> String {
         Vec::from_iter(self.kept.iter().map(String::as_str)).join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The other end of a clone can send any amount of text.
+    #[test]
+    fn only_so_much_of_a_watched_gits_output_is_kept() {
+        let mut lines = Lines::default();
+        let long = "x".repeat(MAX_LINE_BYTES * 2);
+
+        for i in 0..MAX_LINES * 2 {
+            lines.push(format!("{i} {long}\n").as_bytes(), &mut |_| false);
+        }
+
+        assert_eq!(lines.kept.len(), MAX_LINES);
+        assert!(lines.kept.iter().all(|l| l.len() <= MAX_LINE_BYTES));
+        assert!(lines.kept[0].starts_with("20 "), "the last lines are kept");
+    }
+
+    #[test]
+    fn progress_lines_end_in_a_carriage_return_and_are_not_kept() {
+        let mut lines = Lines::default();
+        let mut seen = Vec::new();
+        let mut on_line = |line: &str| {
+            seen.push(line.to_string());
+            line.ends_with('%')
+        };
+
+        lines.push(b"a: 1%\ra: 2", &mut on_line);
+        lines.push(b"%\rfatal: no", &mut on_line);
+        lines.finish(&mut on_line);
+
+        assert_eq!(seen, ["a: 1%", "a: 2%", "fatal: no"]);
+        assert_eq!(lines.text(), "fatal: no");
     }
 }

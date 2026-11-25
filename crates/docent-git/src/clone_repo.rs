@@ -5,7 +5,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::worktree::NO_REPO_COMMANDS;
+use crate::clone::without_credentials;
+use crate::remote::RemoteRepo;
+use crate::runner::NO_REPO_COMMANDS;
 use crate::{BoundClone, Git, GitError};
 
 /// How far one phase of a clone has got.
@@ -36,6 +38,20 @@ impl Git {
                 return Err(GitError::InvalidName(part.to_string()));
             }
         }
+        let url = format!("https://{host}/{owner}/{name}.git");
+        // Always https, so a user of ssh redirects it with `insteadOf`. Where
+        // that leads must still be the repo, or it couldn't be bound. Asked
+        // outside any repo, as a clone is, and without the network.
+        let redirected = self
+            .run(Path::new("/"), &["ls-remote", "--get-url", "--", &url])
+            .await?;
+        let redirected = redirected.trim();
+        if !RemoteRepo::parse(redirected).is_some_and(|r| r.is(host, owner, name)) {
+            return Err(GitError::Redirected {
+                host: host.to_string(),
+                url: without_credentials(redirected),
+            });
+        }
         let dest = parent.join(name);
         let dest_str = dest
             .to_str()
@@ -50,8 +66,6 @@ impl Git {
             },
         })?;
 
-        // Always https, so a user of ssh redirects it with `insteadOf`.
-        let url = format!("https://{host}/{owner}/{name}.git");
         let cloned = self.clone_into(&dest, dest_str, &url, &mut on_progress);
         let checked = match cloned.await {
             Ok(()) => self.check_clone(&dest, host, owner, name).await,
@@ -106,9 +120,11 @@ fn is_plain_name(part: &str) -> bool {
 fn explain(err: GitError, host: &str) -> GitError {
     match err {
         GitError::Failed(why)
-            if why.contains("could not read Username")
-                || why.contains("could not read Password")
-                || why.contains("Authentication failed") =>
+            // The forge chooses what its `remote:` lines say.
+            if why
+                .lines()
+                .filter(|line| !line.starts_with("remote:"))
+                .any(is_credentials_error) =>
         {
             GitError::NoCredentials {
                 host: host.to_string(),
@@ -117,6 +133,16 @@ fn explain(err: GitError, host: &str) -> GitError {
         }
         other => other,
     }
+}
+
+fn is_credentials_error(line: &str) -> bool {
+    [
+        "could not read Username",
+        "could not read Password",
+        "Authentication failed",
+    ]
+    .iter()
+    .any(|error| line.contains(error))
 }
 
 /// Deletes a failed clone. Processes git started may still be writing to it

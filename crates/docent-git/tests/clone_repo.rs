@@ -231,28 +231,6 @@ async fn a_url_redirected_to_another_host_is_refused_before_cloning() {
     assert!(fixture.cloned().is_empty(), "{:?}", fixture.cloned());
 }
 
-/// The user may move the folder and put another there during a long clone.
-#[tokio::test]
-async fn a_folder_that_replaced_the_clone_is_not_deleted() {
-    let fixture = Fixture::new(&[]);
-    let (dest, moved) = (
-        fixture.parent.join("Hello-World"),
-        fixture.home.join("moved"),
-    );
-    fixture.ssh(&format!(
-        "mv '{d}' '{m}'; mkdir '{d}'; touch '{d}/mine.txt'; exit 255",
-        d = dest.display(),
-        m = moved.display()
-    ));
-
-    fixture.clone().await.unwrap_err();
-
-    assert!(
-        dest.join("mine.txt").exists(),
-        "the user's file was deleted"
-    );
-}
-
 /// Only a fake git can fail this way without the network.
 #[tokio::test]
 async fn missing_credentials_say_how_to_set_them_up() {

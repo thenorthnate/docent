@@ -30,7 +30,7 @@ pub enum GitError {
     #[error("{0:?} isn't a name Docent can clone by. Clone the repo yourself, then use Bind.")]
     InvalidName(String),
     #[error(
-        "{0} already exists. If it's your clone, use Bind. Otherwise pick another folder to clone into."
+        "{0} already exists. If it's your finished clone, use Bind. Otherwise pick another folder to clone into."
     )]
     FolderExists(String),
     #[error("Docent couldn't create the folder {path}: {why}")]
@@ -39,6 +39,10 @@ pub enum GitError {
         "git has no working credentials for {host}. Run `gh auth setup-git --hostname {host}`, or set up git's own, then try again. git said: {why}"
     )]
     NoCredentials { host: String, why: String },
+    #[error(
+        "Your git config redirects {host} to {url}, which Docent can't match to {host}. Change the insteadOf that does it, or clone the repo yourself."
+    )]
+    Redirected { host: String, url: String },
     #[error("git failed: {0}")]
     Failed(String),
 }
@@ -71,6 +75,7 @@ impl GitError {
             Self::FolderExists(_) => "folder_exists",
             Self::CreateFailed { .. } => "create_failed",
             Self::NoCredentials { .. } => "no_credentials",
+            Self::Redirected { .. } => "redirected",
             Self::Failed(_) => "git_failed",
         }
     }

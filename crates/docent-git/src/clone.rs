@@ -68,7 +68,7 @@ impl Git {
 
 /// `url` without the `user:password@` of a URL with a scheme, so a token
 /// embedded in a remote never reaches the UI.
-fn without_credentials(url: &str) -> String {
+pub(crate) fn without_credentials(url: &str) -> String {
     let Some((scheme, rest)) = url.split_once("://") else {
         return url.to_string();
     };

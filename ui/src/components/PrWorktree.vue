@@ -23,6 +23,7 @@ let latest = 0;
 
 async function open() {
   const request = ++latest;
+  const clonesBefore = clones.finished;
   state.value = { status: "preparing" };
   try {
     const opened = await invoke<Opened>("open_pr_worktree", {
@@ -32,6 +33,8 @@ async function open() {
       number: props.number,
     });
     if (request !== latest) return;
+    // A clone that finished meanwhile may be this repo's.
+    if (opened.status === "unbound" && clones.finished !== clonesBefore) return await open();
     state.value = opened;
     if (opened.status === "ready") emit("ready", opened.head_sha);
   } catch (err) {

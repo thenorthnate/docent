@@ -199,8 +199,8 @@ From the M1 breakdown ([#10](https://github.com/thenorthnate/docent/issues/10)) 
 
 | Topic | Decision |
 |---|---|
-| Clone URL | Always `https://<host>/<owner>/<name>.git`. Users of ssh redirect it with git's `insteadOf`, which clones and fetches both follow. An ssh host alias doesn't work: the clone's remote must still name the forge host |
-| Clone folder | `<picked folder>/<name>`, created by Docent. An existing folder is refused, even an empty one, so only a folder Docent made is ever deleted after a failure |
+| Clone URL | Always `https://<host>/<owner>/<name>.git`. Users of ssh redirect it with git's `insteadOf`, which clones and fetches both follow. A redirect to another host name, such as an ssh alias, is refused before cloning, since it couldn't be bound |
+| Clone folder | `<picked folder>/<name>`, created by Docent. An existing folder is refused, even an empty one, so only a folder Docent made is ever deleted after a failure. Best effort: a crash mid-clone leaves the folder, and Docent says it already exists |
 | Time limit | None overall. A clone that prints nothing for 10 minutes is stopped |
 | Hooks | Off while cloning: a relative `core.hooksPath` in the user's config would run the cloned repo's files |
 
