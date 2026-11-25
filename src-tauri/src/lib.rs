@@ -171,12 +171,7 @@ async fn open_pr_worktree(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<worktree::OpenedPr, CommandError> {
-    let worktrees = Worktrees {
-        in_use: state.worktrees_in_use.clone(),
-        store: store.inner().clone(),
-        git: state.git().await,
-        root: worktrees_folder(&app)?,
-    };
+    let worktrees = worktrees(&app, &state, &store).await?;
     // The eviction carries on in the background.
     let (opened, _evicting) = worktrees.open(&host, &owner, &repo, number).await;
     opened
@@ -191,17 +186,29 @@ async fn changed_files(
     state: State<'_, AppState>,
     store: State<'_, Store>,
 ) -> Result<Vec<ChangedFile>, CommandError> {
-    let worktrees = worktrees_folder(&app)?;
-    changed_files::changed_files(&store, &state.git().await, &worktrees, &range).await
+    let worktrees = worktrees(&app, &state, &store).await?;
+    // The eviction carries on in the background.
+    let (files, _evicting) = worktrees.changed_files(&range).await;
+    files
 }
 
-/// The folder in Docent's data folder that holds every PR worktree.
-fn worktrees_folder(app: &AppHandle) -> Result<PathBuf, CommandError> {
+/// The folder in Docent's data folder that holds every PR worktree, and what
+/// working in it needs.
+async fn worktrees(
+    app: &AppHandle,
+    state: &AppState,
+    store: &Store,
+) -> Result<Worktrees, CommandError> {
     let data = app.path().app_data_dir().map_err(|err| CommandError {
         kind: "invalid_path",
         message: format!("Docent couldn't find its data folder: {err}"),
     })?;
-    Ok(data.join("worktrees"))
+    Ok(Worktrees {
+        in_use: state.worktrees_in_use.clone(),
+        store: store.clone(),
+        git: state.git().await,
+        root: data.join("worktrees"),
+    })
 }
 
 /// The open PRs in an inbox section (`review_requested`, `assigned`,

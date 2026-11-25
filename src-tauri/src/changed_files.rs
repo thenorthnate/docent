@@ -11,12 +11,12 @@ use crate::command_error::CommandError;
 /// base for it, and the head its worktree was opened at.
 #[derive(Debug, serde::Deserialize)]
 pub struct PullRange {
-    host: String,
-    owner: String,
-    repo: String,
-    number: u64,
-    base_sha: String,
-    head_sha: String,
+    pub(crate) host: String,
+    pub(crate) owner: String,
+    pub(crate) repo: String,
+    pub(crate) number: u64,
+    pub(crate) base_sha: String,
+    pub(crate) head_sha: String,
 }
 
 /// The files `range`'s PR changes, read from its open worktree. Watched and
