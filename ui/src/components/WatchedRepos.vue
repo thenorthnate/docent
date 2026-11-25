@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch as watchValue } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import CloneButton from "@/components/CloneButton.vue";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/ipc";
+import { useClonesStore } from "@/stores/clones";
 import { useInboxStore } from "@/stores/inbox";
 
 /** A host, as the Rust core reports it. `error` is set when it failed to reconnect. */
@@ -17,10 +19,8 @@ type WatchedRepo = {
   local_path: string | null;
 };
 
-/** What Bind and Clone do (PLAN §4, "Repo binding"). */
+/** What Bind does (PLAN §4, "Repo binding"). */
 const BIND_TOOLTIP = "Point Docent at a clone of this repo you already have, so diffs come from it.";
-const CLONE_TOOLTIP =
-  "Clone: make a full clone into a folder you pick, using your existing git credentials. Coming soon.";
 
 /** The connected hosts: the ones a repo can be watched on. */
 const accounts = ref<Account[]>([]);
@@ -32,6 +32,7 @@ const repo = ref("");
 const watching = ref(false);
 const error = ref<string | null>(null);
 const inbox = useInboxStore();
+const clones = useClonesStore();
 
 /** The host picker only appears when there is a choice to make. */
 const pickHost = computed(() => accounts.value.length > 1);
@@ -104,6 +105,7 @@ async function unwatch(id: number) {
   }
 }
 
+watchValue(() => clones.finished, refresh);
 onMounted(refresh);
 </script>
 
@@ -159,30 +161,21 @@ onMounted(refresh);
         </p>
         <div
           v-else
-          class="flex gap-1"
+          class="flex flex-wrap gap-1"
         >
           <Button
             variant="outline"
             size="xs"
             :title="BIND_TOOLTIP"
-            :disabled="binding !== null"
+            :disabled="binding !== null || r.id in clones.running"
             @click="bind(r.id)"
           >
             Bind
           </Button>
-          <!--
-            A placeholder until Clone lands (#19). A disabled button ignores
-            the pointer, so the tooltip sits on a wrapper that still gets it.
-          -->
-          <span :title="CLONE_TOOLTIP">
-            <Button
-              variant="outline"
-              size="xs"
-              disabled
-            >
-              Clone
-            </Button>
-          </span>
+          <CloneButton
+            :id="r.id"
+            :disabled="binding === r.id"
+          />
         </div>
       </li>
     </ul>

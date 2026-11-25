@@ -37,6 +37,7 @@ Docent treats PR content as **hostile** until the user trusts the repo, branch o
 - agent permission and tool policy, including MCP allowlists and answers to ACP permission requests
 - forge token handling: acquiring, storing, and stripping tokens from child process environments, including reconnecting remembered hosts at startup and anything that writes account rows to the store
 - spawning agent, git and `gh` processes, and reading the login shell's `PATH`
+- cloning: the folder a clone goes in, whose name the forge supplies, and deleting that folder after a failed clone
 - verification: running commands and managing the verify worktree
 - removing PR worktrees and deleting folders in Docent's worktrees folder, where a path that escapes the folder would delete the user's files
 

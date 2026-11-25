@@ -5,25 +5,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::runner::{NETWORK_TIMEOUT, TIMEOUT};
+use crate::runner::{NETWORK_TIMEOUT, NO_REPO_COMMANDS, TIMEOUT};
 use crate::worktrees_root::{PrWorktreePath, resolve};
 use crate::{Git, GitError};
-
-/// Config for every git call here. The clone's own config may name hooks,
-/// an fsmonitor or submodules, and PR content is hostile, so none of them
-/// may run: opening a PR runs only git itself.
-const NO_REPO_COMMANDS: [&str; 10] = [
-    "-c",
-    "core.hooksPath=/dev/null",
-    "-c",
-    "core.fsmonitor=false",
-    "-c",
-    "gc.auto=0",
-    "-c",
-    "maintenance.auto=false",
-    "-c",
-    "submodule.recurse=false",
-];
 
 /// Long enough to delete a very large worktree.
 const REMOVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);

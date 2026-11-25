@@ -13,6 +13,7 @@ use docent_git::Git;
 fn fake_git(dir: &Path, dump: &Path) {
     let script = format!(
         "#!/bin/sh\n\
+         case \"$*\" in ls-remote*) echo https://github.com/octocat/Hello-World.git; exit 0;; esac\n\
          env > '{dump}'\n\
          if [ -t 0 ]; then echo STDIN_IS_TTY >> '{dump}'; fi\n\
          if read -r line; then echo STDIN_HAD_INPUT >> '{dump}'; fi\n\
@@ -110,6 +111,45 @@ async fn git_cannot_prompt_for_input() {
 
     assert!(env.lines().any(|l| l == "GIT_TERMINAL_PROMPT=0"), "{env}");
     assert!(env.lines().any(|l| l == "GCM_INTERACTIVE=never"), "{env}");
+    assert!(!env.contains("STDIN_IS_TTY"), "{env}");
+    assert!(!env.contains("STDIN_HAD_INPUT"), "{env}");
+}
+
+/// Cloning talks to the forge, so it is where a token would be most useful to
+/// git. It uses the user's own git credentials instead.
+#[tokio::test]
+async fn forge_tokens_never_reach_a_clone() {
+    let bin = tempfile::tempdir().expect("temp dir");
+    let dump = bin.path().join("env.txt");
+    fake_git(bin.path(), &dump);
+    let path = std::env::join_paths([bin.path(), Path::new("/usr/bin"), Path::new("/bin")])
+        .expect("join PATH");
+    let parent = tempfile::tempdir().expect("temp dir");
+
+    let result = Git::with_env(
+        path,
+        [
+            var("GH_TOKEN", "gho_secret1"),
+            var("GITHUB_TOKEN", "gho_secret2"),
+            var("GIT_ASKPASS", "/tmp/askpass"),
+            var("HOME", "/Users/someone"),
+        ],
+    )
+    .clone_repo(
+        parent.path(),
+        "github.com",
+        "octocat",
+        "Hello-World",
+        |_| {},
+    )
+    .await;
+
+    assert!(result.is_err(), "the fake git always fails");
+    let env = std::fs::read_to_string(&dump).expect("fake git ran");
+    for leaked in ["gho_secret", "TOKEN", "ASKPASS"] {
+        assert!(!env.contains(leaked), "{leaked} reached git:\n{env}");
+    }
+    assert!(env.lines().any(|l| l == "GIT_TERMINAL_PROMPT=0"), "{env}");
     assert!(!env.contains("STDIN_IS_TTY"), "{env}");
     assert!(!env.contains("STDIN_HAD_INPUT"), "{env}");
 }

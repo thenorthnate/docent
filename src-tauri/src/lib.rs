@@ -1,5 +1,6 @@
 mod bind;
 mod changed_files;
+mod clone;
 mod command_error;
 mod evict;
 mod inbox;
@@ -14,10 +15,12 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use clone::CloneUpdate;
 use command_error::CommandError;
 use docent_forge::{AccountSummary, Accounts, GhCli, PullOverview, Section, SectionPulls};
 use docent_git::{ChangedFile, Git};
 use docent_store::{RepoId, Store, WatchedRepo};
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::OnceCell;
@@ -127,6 +130,25 @@ async fn unwatch_repo(id: RepoId, store: State<'_, Store>) -> Result<(), Command
     Ok(store.unwatch_repo(id).await?)
 }
 
+/// Asks for a folder with the native picker. `None` means the user cancelled.
+async fn pick_folder(app: &AppHandle, title: String) -> Result<Option<PathBuf>, CommandError> {
+    let (picked, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(title)
+        .pick_folder(move |folder| {
+            let _ = picked.send(folder);
+        });
+    // A dropped sender (the dialog closed without answering) is a cancel.
+    let Some(folder) = chosen.await.ok().flatten() else {
+        return Ok(None);
+    };
+    folder.into_path().map(Some).map_err(|err| CommandError {
+        kind: "invalid_path",
+        message: err.to_string(),
+    })
+}
+
 /// Asks for a folder with the native picker, then binds watched repo `id`
 /// to the clone in it. Returns `None` if the user cancels. The folder comes
 /// from the picker, never from the UI.
@@ -138,24 +160,37 @@ async fn bind_repo(
     store: State<'_, Store>,
 ) -> Result<Option<WatchedRepo>, CommandError> {
     let repo = store.watched_repo(id).await?;
-    let (picked, chosen) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title(format!("Choose your clone of {}/{}", repo.owner, repo.name))
-        .pick_folder(move |folder| {
-            let _ = picked.send(folder);
-        });
-    // A dropped sender (the dialog closed without answering) is a cancel.
-    let Some(folder) = chosen.await.ok().flatten() else {
+    let title = format!("Choose your clone of {}/{}", repo.owner, repo.name);
+    let Some(folder) = pick_folder(&app, title).await? else {
         return Ok(None);
     };
-    let folder = folder.into_path().map_err(|err| CommandError {
-        kind: "invalid_path",
-        message: err.to_string(),
-    })?;
     bind::bind(&store, &state.git().await, &repo, &folder)
         .await
         .map(Some)
+}
+
+/// Asks for a folder with the native picker, then clones watched repo `id`
+/// into it and binds the clone. Returns `None` if the user cancels. Reports
+/// to `on_progress` once a folder is picked.
+#[tauri::command]
+async fn clone_repo(
+    id: RepoId,
+    on_progress: Channel<CloneUpdate>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<Option<WatchedRepo>, CommandError> {
+    let repo = store.watched_repo(id).await?;
+    let title = format!("Choose where to clone {}/{}", repo.owner, repo.name);
+    let Some(parent) = pick_folder(&app, title).await? else {
+        return Ok(None);
+    };
+    clone::clone(&store, &state.git().await, &repo, &parent, |update| {
+        // The window may have gone; the clone carries on without it.
+        let _ = on_progress.send(update);
+    })
+    .await
+    .map(Some)
 }
 
 /// Opens PR `number` of `owner/repo` on `host` in its own worktree, under
@@ -272,6 +307,7 @@ pub fn run() {
             app_version,
             bind_repo,
             changed_files,
+            clone_repo,
             connect_host,
             list_accounts,
             list_section,

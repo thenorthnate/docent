@@ -134,7 +134,7 @@ Apps launched from Finder don't inherit your shell's `PATH`, so Docent reads `PA
 ## 4. Core concepts
 
 - **Watched repo**: a forge repo you've told Docent to pay attention to. Everything else stays out of the inbox and notifications.
-- **Repo binding**: a watched repo mapped to a local clone. **Bind** points at an existing clone; **Clone** makes a normal full clone into a folder you pick, using your existing git credentials (for example `gh auth setup-git`). Docent never hands a forge token to git. Diffs always come from local git.
+- **Repo binding**: a watched repo mapped to a local clone. **Bind** points at an existing clone; **Clone** makes a normal full clone into a folder you pick, using your existing git credentials (for example `gh auth setup-git`). The URL is https; git's `insteadOf` config can redirect it, for example to ssh. The clone goes in a new folder named after the repo, deleted again if the clone fails. Docent never hands a forge token to git. Diffs always come from local git.
 - **Worktree**: a git worktree Docent creates under its own data dir, in detached HEAD at the PR's head SHA. Agents run with `cwd` set to it, so they see the full repo at the reviewed commit. Your working tree is untouched, though your clone's `.git` gains `refs/docent/*` refs and worktree metadata.
 - **Trust**: your local decision that a repo, branch or PR may be given to agents and linters (see 5.6).
 - **Agent profile**: how to launch an ACP agent (command, args, env), plus its MCP tool allowlist. Assigned per forge account, with optional per-repo overrides. If nothing matches, no agent runs and Docent asks you to choose.
