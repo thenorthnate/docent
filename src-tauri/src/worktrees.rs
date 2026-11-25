@@ -3,17 +3,17 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use docent_git::{ChangedFile, Git};
+use docent_git::{ChangedFile, FileDiff, Git};
 use docent_store::Store;
 use tauri::async_runtime::JoinHandle;
 use tokio::sync::RwLock;
 
-use crate::changed_files::{self, PullRange};
+use crate::changed_files::{self, FileBlobs, PullRange};
 use crate::command_error::CommandError;
 use crate::evict::evict;
 use crate::worktree::{self, OpenedPr};
 
-/// Read while a PR's worktree is being opened or its files listed, written
+/// Read while a PR's worktree is being opened or its files listed or diffed, written
 /// while worktrees are evicted, so one is never removed while it is in use.
 /// Whatever reads it must end with `evict_soon`.
 pub type InUse = Arc<RwLock<()>>;
@@ -66,6 +66,20 @@ impl Worktrees {
             changed_files::changed_files(&self.store, &self.git, &self.root, range).await
         };
         (files, self.evict_soon())
+    }
+
+    /// Diffs one of a PR's files in its open worktree, then enforces the disk
+    /// cap in the background, as a listing does.
+    pub async fn file_diff(
+        &self,
+        range: &PullRange,
+        blobs: &FileBlobs,
+    ) -> (Result<FileDiff, CommandError>, JoinHandle<()>) {
+        let diff = {
+            let _diffing = self.in_use.read().await;
+            changed_files::file_diff(&self.store, &self.git, &self.root, range, blobs).await
+        };
+        (diff, self.evict_soon())
     }
 
     /// Runs `evict_if_idle` in the background.

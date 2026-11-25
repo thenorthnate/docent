@@ -1,8 +1,9 @@
-//! The files a PR changes, for the Review drawer (PLAN §5.4).
+//! The files a PR changes, for the Review drawer, and each one's diff for
+//! the viewer (PLAN §5.4).
 
 use std::path::Path;
 
-use docent_git::{ChangedFile, Git, WorktreesRoot};
+use docent_git::{BoundClone, ChangedFile, FileDiff, Git, PrWorktreePath, WorktreesRoot};
 use docent_store::Store;
 
 use crate::command_error::CommandError;
@@ -19,14 +20,48 @@ pub struct PullRange {
     pub(crate) head_sha: String,
 }
 
-/// The files `range`'s PR changes, read from its open worktree. Watched and
-/// bound repos only; the bound clone is checked again first, as on opening.
+/// A changed file's blobs, as `changed_files` listed them.
+#[derive(Debug, serde::Deserialize)]
+pub struct FileBlobs {
+    pub(crate) old_blob: Option<String>,
+    pub(crate) new_blob: Option<String>,
+}
+
+/// The files `range`'s PR changes, read from its open worktree.
 pub async fn changed_files(
     store: &Store,
     git: &Git,
     worktrees: &Path,
     range: &PullRange,
 ) -> Result<Vec<ChangedFile>, CommandError> {
+    let (clone, dest) = pr_worktree(store, git, worktrees, range).await?;
+    let (base, head) = (&range.base_sha, &range.head_sha);
+    Ok(git
+        .changed_files(&clone.path, &clone.remote, &dest, base, head)
+        .await?)
+}
+
+/// The diff of one of `range`'s changed files, read from its open worktree.
+pub async fn file_diff(
+    store: &Store,
+    git: &Git,
+    worktrees: &Path,
+    range: &PullRange,
+    blobs: &FileBlobs,
+) -> Result<FileDiff, CommandError> {
+    let (clone, dest) = pr_worktree(store, git, worktrees, range).await?;
+    let (old, new) = (blobs.old_blob.as_deref(), blobs.new_blob.as_deref());
+    Ok(git.file_diff(&clone.path, &dest, old, new).await?)
+}
+
+/// The clone and worktree of `range`'s PR. Watched and bound repos only; the
+/// bound clone is checked again first, as on opening.
+async fn pr_worktree(
+    store: &Store,
+    git: &Git,
+    worktrees: &Path,
+    range: &PullRange,
+) -> Result<(BoundClone, PrWorktreePath), CommandError> {
     let repo = store
         .watched_repo_named(&range.host, &range.owner, &range.repo)
         .await?;
@@ -40,10 +75,7 @@ pub async fn changed_files(
         .check_clone(Path::new(local_path), &repo.host, &repo.owner, &repo.name)
         .await?;
     let dest = WorktreesRoot::new(worktrees).pr(repo.id, range.number);
-    let (base, head) = (&range.base_sha, &range.head_sha);
-    Ok(git
-        .changed_files(&clone.path, &clone.remote, &dest, base, head)
-        .await?)
+    Ok((clone, dest))
 }
 
 #[cfg(test)]
@@ -80,7 +112,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_opened_prs_files_reach_the_ui() {
+    async fn an_opened_prs_files_and_their_diffs_reach_the_ui() {
         let store = Store::open_in_memory().await.unwrap();
         let repo = watch_hello_world(&store).await;
         let (folder, data) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
@@ -128,14 +160,33 @@ mod tests {
             .await
             .expect("lists");
 
+        let blob = sh_git(&["rev-parse", "HEAD:new.txt"]);
         assert_eq!(
-            serde_json::to_value(files).unwrap(),
+            serde_json::to_value(&files).unwrap(),
             serde_json::json!([{
                 "path": "new.txt",
                 "old_path": null,
                 "status": "added",
                 "lines": { "added": 1, "deleted": 0 },
+                "old_blob": null,
+                "new_blob": blob,
             }])
+        );
+        let blobs = FileBlobs {
+            old_blob: None,
+            new_blob: Some(blob),
+        };
+        let diff = file_diff(&store, &git, root, &range(&base, &head), &blobs)
+            .await
+            .expect("diffs");
+        assert_eq!(
+            serde_json::to_value(diff).unwrap(),
+            serde_json::json!({
+                "kind": "text",
+                "old": "",
+                "new": "hi\n",
+                "hunks": [{ "old_start": 0, "old_lines": 0, "new_start": 1, "new_lines": 1 }],
+            })
         );
     }
 
@@ -145,11 +196,21 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let range = range(SHA, SHA);
 
-        let unwatched = changed_files(&store, &git(), data.path(), &range).await;
+        let blobs = FileBlobs {
+            old_blob: None,
+            new_blob: Some(SHA.into()),
+        };
+        let (git, root) = (git(), data.path());
+
+        let unwatched = changed_files(&store, &git, root, &range).await;
+        let unwatched_diff = file_diff(&store, &git, root, &range, &blobs).await;
         watch_hello_world(&store).await;
-        let unbound = changed_files(&store, &git(), data.path(), &range).await;
+        let unbound = changed_files(&store, &git, root, &range).await;
+        let unbound_diff = file_diff(&store, &git, root, &range, &blobs).await;
 
         assert_eq!(unwatched.unwrap_err().kind, "not_watched");
+        assert_eq!(unwatched_diff.unwrap_err().kind, "not_watched");
         assert_eq!(unbound.unwrap_err().kind, "unbound");
+        assert_eq!(unbound_diff.unwrap_err().kind, "unbound");
     }
 }
