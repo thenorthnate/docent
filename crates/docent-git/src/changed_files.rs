@@ -178,9 +178,15 @@ fn parse(output: &[u8]) -> Option<Vec<ChangedFile>> {
     Some(files)
 }
 
+/// The mode git gives a submodule's entry (a "gitlink"). Its object ID names
+/// a commit in the submodule's own repo, not a blob in this one. Other modes
+/// are `100644` (a file), `100755` (an executable) and `120000` (a symlink,
+/// whose blob holds its target).
+const GITLINK_MODE: &str = "160000";
+
 /// A side's object ID from a raw record, if it is a blob: not the all-zero ID
 /// of a side the file doesn't exist on, nor a submodule's commit.
 fn blob(mode: &str, id: &str) -> Option<String> {
     let absent = id.bytes().all(|byte| byte == b'0');
-    (!absent && mode != "160000").then(|| id.to_string())
+    (!absent && mode != GITLINK_MODE).then(|| id.to_string())
 }
