@@ -589,3 +589,36 @@ async fn a_submodule_has_no_blob_to_diff() {
     assert_eq!(files.len(), 1);
     assert_eq!((&files[0].old_blob, &files[0].new_blob), (&None, &None));
 }
+
+/// Binary means a NUL byte in the first 8,000 bytes, as git decides when no
+/// attributes apply: a file of control bytes, or with a NUL further in, is
+/// text, and git counts its lines too.
+#[tokio::test]
+async fn only_a_nul_early_on_makes_a_file_binary_as_in_git() {
+    let late_nul = [&b"a\n".repeat(4001)[..], b"\0\n"].concat();
+    let f = Fixture::new(&[]);
+    f.write("ones", &[1; 64]);
+    f.write("late-nul", &late_nul);
+    f.write("early-nul", b"a\0\n");
+    let head = f.open_pr().await;
+
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+    let mut kinds = Vec::new();
+    for file in &files {
+        kinds.push(match f.diff(file).await.expect("diffs") {
+            FileDiff::Text { .. } => "text",
+            FileDiff::Binary => "binary",
+            FileDiff::TooLarge { .. } => "too large",
+        });
+    }
+
+    let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
+    assert_eq!(paths, ["early-nul", "late-nul", "ones"]);
+    assert_eq!(kinds, ["binary", "text", "text"]);
+    let numstat = sh_git(&f.clone, &["diff", "--numstat", &f.main(), &head]);
+    let git_binary: Vec<_> = numstat
+        .lines()
+        .map(|line| line.starts_with("-\t-\t"))
+        .collect();
+    assert_eq!(git_binary, [true, false, false]);
+}

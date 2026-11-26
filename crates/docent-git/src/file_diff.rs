@@ -75,8 +75,11 @@ impl Git {
             self.contents(worktree, old_blob).await?,
             self.contents(worktree, new_blob).await?,
         );
-        // Git's own rule when no attributes apply. A PR's `.gitattributes`
-        // can't apply here, so it can't hide a text file's changes.
+        // Git's own rule when no attributes apply, so the file list's line
+        // counts agree: only a NUL early on makes a file binary. A file of
+        // other control bytes is text, and the viewer shows those bytes. A
+        // PR's `.gitattributes` can't apply here, so it can't hide a text
+        // file's changes.
         if [&old, &new]
             .iter()
             .any(|bytes| bytes[..bytes.len().min(BINARY_SNIFF)].contains(&0))
