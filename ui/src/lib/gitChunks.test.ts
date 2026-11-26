@@ -68,5 +68,12 @@ describe("gitDiffView", () => {
       expect(style.backgroundImage + style.background).not.toContain("gradient");
       expect(style.backgroundColor).not.toBe("");
     });
+
+    it("shows control bytes, which git counts as text, instead of hiding them", () => {
+      const state = EditorState.create({ doc: "\x01\x01\n", extensions: gitDiffView("", [hunk(0, 0, 1, 1)]) });
+      view = new EditorView({ state, parent: document.body });
+
+      expect(view.dom.querySelectorAll(".cm-specialChar")).toHaveLength(2);
+    });
   });
 });

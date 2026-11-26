@@ -10,7 +10,7 @@
  */
 import { Chunk, presentableDiff, unifiedMergeView, type DiffConfig } from "@codemirror/merge";
 import { EditorState, Text, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, highlightSpecialChars } from "@codemirror/view";
 import type { Hunk } from "@/lib/review";
 
 /** Each Docent document's hunks, keyed by the diff config its view was given. */
@@ -65,6 +65,8 @@ export function gitDiffView(old: string, hunks: readonly Hunk[]): Extension {
   return [
     EditorState.lineSeparator.of("\n"),
     EditorState.readOnly.of(true),
+    // Control bytes are text to git, so they're shown, not left invisible.
+    highlightSpecialChars(),
     addedText,
     unifiedMergeView({ original: Text.of(old.split("\n")), diffConfig, mergeControls: false }),
   ];
