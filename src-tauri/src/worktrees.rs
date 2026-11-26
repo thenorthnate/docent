@@ -1,20 +1,24 @@
-//! Opening and reading PR worktrees and evicting them, without one undoing the other.
+//! Opening and reading PR worktrees, and evicting them or removing those of
+//! closed PRs, without one undoing the other.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use docent_forge::Forge;
 use docent_git::{ChangedFile, FileDiff, Git};
 use docent_store::Store;
 use tauri::async_runtime::JoinHandle;
 use tokio::sync::RwLock;
 
 use crate::changed_files::{self, FileBlobs, PullRange};
+use crate::closed;
 use crate::command_error::CommandError;
 use crate::evict::evict;
 use crate::worktree::{self, OpenedPr};
 
-/// Read while a PR's worktree is being opened or its files listed or diffed, written
-/// while worktrees are evicted, so one is never removed while it is in use.
+/// Read while a PR's worktree is being opened or its files listed or
+/// diffed, written while worktrees are evicted or those of closed PRs
+/// removed, so one is never removed while it is in use.
 /// Whatever reads it must end with `evict_soon`.
 pub type InUse = Arc<RwLock<()>>;
 
@@ -80,6 +84,40 @@ impl Worktrees {
             changed_files::file_diff(&self.store, &self.git, &self.root, range, blobs).await
         };
         (diff, self.evict_soon())
+    }
+
+    /// Removes the worktrees and pins of PRs the forge says are closed or
+    /// merged. The forge is asked first, so nothing waits on it; the removal
+    /// then waits for any open, listing or eviction to finish.
+    pub async fn remove_done(&self, forge: &impl Forge) {
+        let done = match closed::done_pulls(forge, &self.store).await {
+            Ok(done) => done,
+            Err(err) => {
+                eprintln!("Could not check for closed PRs: {}", err.message);
+                return;
+            }
+        };
+        if done.is_empty() {
+            return;
+        }
+        let _removing = self.in_use.write().await;
+        // Read again under the lock, in case a PR was reopened from another
+        // clone, or already removed, while the forge was asked.
+        let recorded = match self.store.recorded_pulls().await {
+            Ok(recorded) => recorded,
+            Err(err) => {
+                eprintln!("Could not check for closed PRs: {err}");
+                return;
+            }
+        };
+        let is_done = |pull: &docent_store::RecordedPull| {
+            done.iter().any(|d| {
+                d.worktree.repo_id == pull.worktree.repo_id
+                    && d.worktree.number == pull.worktree.number
+            })
+        };
+        let done: Vec<_> = recorded.into_iter().filter(is_done).collect();
+        closed::remove(&self.store, &self.git, &self.root, &done).await;
     }
 
     /// Runs `evict_if_idle` in the background.
@@ -337,6 +375,37 @@ mod tests {
         let err = listing.await.unwrap().expect_err("nothing to list");
         assert_eq!(err.kind, "worktree_missing");
         assert!(err.message.contains("Reopen the PR"), "{}", err.message);
+    }
+
+    /// The denial: a closed PR's worktree isn't removed while a PR is being
+    /// opened, only once the open is done.
+    #[tokio::test]
+    async fn removing_closed_prs_waits_for_an_open_to_finish() {
+        use docent_forge::{FakeForge, PullRef, PullState, PullStates};
+
+        let f = Fixture::new().await;
+        f.open(1).await.expect("opens");
+        let closed = PullRef {
+            host: "github.com".into(),
+            owner: "octocat".into(),
+            repo: "Hello-World".into(),
+            number: 1,
+        };
+        let forge = FakeForge::with_states(PullStates {
+            states: vec![(closed, PullState::Closed)],
+            failures: vec![],
+        });
+        let opening = f.worktrees.in_use.read().await;
+        let worktrees = f.worktrees.clone();
+        let removing = tokio::spawn(async move { worktrees.remove_done(&forge).await });
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert!(!removing.is_finished(), "removed during an open");
+        assert!(f.folder(1).exists());
+        drop(opening);
+        removing.await.unwrap();
+        assert!(!f.folder(1).exists());
     }
 
     /// PR 1's folder is a symlink, so evicting it is refused.

@@ -98,6 +98,40 @@ pub struct SectionPulls {
     pub incomplete: Vec<String>,
 }
 
+/// A PR, named by where it lives.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PullRef {
+    pub host: String,
+    pub owner: String,
+    pub repo: String,
+    pub number: u64,
+}
+
+/// Whether a PR is still open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullState {
+    Open,
+    Closed,
+    Merged,
+}
+
+impl PullState {
+    /// Closed or merged: done with, either way.
+    pub fn is_done(self) -> bool {
+        matches!(self, Self::Closed | Self::Merged)
+    }
+}
+
+/// The states the forge reported, and the hosts that couldn't be asked. A
+/// PR the forge didn't report on, say because it is gone or the account
+/// can't see it, is in neither.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PullStates {
+    /// In the order the PRs were asked about.
+    pub states: Vec<(PullRef, PullState)>,
+    pub failures: Vec<HostFailure>,
+}
+
 /// A forge, across every connected host.
 pub trait Forge: Sync {
     /// The open PRs in `section`, from every connected host. Each host is
@@ -112,6 +146,10 @@ pub trait Forge: Sync {
         repo: &RepoName,
         number: u64,
     ) -> impl Future<Output = Result<PullOverview, RepoError>> + Send;
+
+    /// Whether each of `pulls` is open, closed or merged, asking each host
+    /// once for all of its PRs. A host that fails reports no states at all.
+    fn pull_states(&self, pulls: &[PullRef]) -> impl Future<Output = PullStates> + Send;
 }
 
 #[cfg(test)]

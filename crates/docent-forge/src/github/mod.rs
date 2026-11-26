@@ -3,9 +3,11 @@
 mod details;
 mod overview;
 mod repo_name;
+mod states;
 
 pub(crate) use overview::pull_overview;
 pub use repo_name::RepoName;
+pub(crate) use states::pull_states;
 
 use octocrab::{Octocrab, Page};
 use tokio::time::Instant;

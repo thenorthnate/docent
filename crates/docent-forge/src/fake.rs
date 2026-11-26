@@ -4,17 +4,20 @@
 use std::sync::{Mutex, PoisonError};
 
 use crate::github::RepoName;
-use crate::{Forge, PullOverview, RepoError, Section, SectionPulls};
+use crate::{Forge, PullOverview, PullRef, PullStates, RepoError, Section, SectionPulls};
 
-/// Answers [`Forge::search`] with the same fixed value for every section, and
-/// [`Forge::pull_overview`] with a fixed overview for any PR, and records
-/// what was asked.
+/// Answers [`Forge::search`] with the same fixed value for every section,
+/// [`Forge::pull_overview`] with a fixed overview for any PR, and
+/// [`Forge::pull_states`] with the fixed states of the PRs asked about, and
+/// records what was asked.
 #[derive(Debug, Default)]
 pub struct FakeForge {
     pulls: SectionPulls,
     overview: Option<PullOverview>,
     asked: Mutex<Vec<Section>>,
     overviews_asked: Mutex<Vec<String>>,
+    states: PullStates,
+    states_asked: Mutex<Vec<Vec<PullRef>>>,
 }
 
 impl FakeForge {
@@ -32,6 +35,23 @@ impl FakeForge {
             overview: Some(overview),
             ..Self::default()
         }
+    }
+
+    /// A forge that answers with `states`, kept to the PRs asked about. Unlike
+    /// a real forge, it reports states even for hosts in `failures`.
+    pub fn with_states(states: PullStates) -> Self {
+        Self {
+            states,
+            ..Self::default()
+        }
+    }
+
+    /// The PRs each call to [`Forge::pull_states`] asked about, in order.
+    pub fn states_asked(&self) -> Vec<Vec<PullRef>> {
+        self.states_asked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The sections searched so far, in order.
@@ -76,5 +96,24 @@ impl Forge for FakeForge {
             repo: name,
             number,
         })
+    }
+
+    async fn pull_states(&self, pulls: &[PullRef]) -> PullStates {
+        self.states_asked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(pulls.to_vec());
+        // Failed hosts' states are passed on too, so callers must prove they
+        // ignore them.
+        PullStates {
+            states: self
+                .states
+                .states
+                .iter()
+                .filter(|(pull, _)| pulls.contains(pull))
+                .cloned()
+                .collect(),
+            failures: self.states.failures.clone(),
+        }
     }
 }
