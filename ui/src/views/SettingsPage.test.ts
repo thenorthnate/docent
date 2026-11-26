@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import SettingsPage from "./SettingsPage.vue";
+import { themeSettingKey } from "@/theme";
+import { testThemeSetting } from "@/theme.testing";
+
+function mountPage() {
+  return mount(SettingsPage, { global: { provide: { [themeSettingKey]: testThemeSetting() } } });
+}
 
 afterEach(() => {
   clearMocks();
@@ -22,7 +28,7 @@ describe("SettingsPage", () => {
       throw new Error(`unexpected command: ${cmd}`);
     });
 
-    const wrapper = mount(SettingsPage);
+    const wrapper = mountPage();
     await flushPromises();
 
     expect(calls).toContain("app_version");
@@ -35,11 +41,11 @@ describe("SettingsPage", () => {
       throw new Error("IPC unavailable");
     });
 
-    const wrapper = mount(SettingsPage);
+    const wrapper = mountPage();
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("Settings");
-    expect(wrapper.get("h2").text()).toBe("Accounts");
+    expect(wrapper.findAll("h2").map((heading) => heading.text())).toEqual(["Appearance", "Accounts"]);
     expect(wrapper.text()).toContain("version unknown");
   });
 });
