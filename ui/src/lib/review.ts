@@ -53,7 +53,19 @@ export type ChangedFile = {
   status: FileStatus;
   /** `null` for a binary file. */
   lines: { added: number; deleted: number } | null;
+  /** The contents before and after, as object IDs; `null` on a side the file doesn't exist on. */
+  old_blob: string | null;
+  new_blob: string | null;
 };
+
+/** A hunk as git's `@@ -old_start,old_lines +new_start,new_lines @@` header gives it. */
+export type Hunk = { old_start: number; old_lines: number; new_start: number; new_lines: number };
+
+/** One file's diff, as `file_diff` reports it. Contents came from the PR, so they're shown as text only. */
+export type FileDiff =
+  | { kind: "text"; old: string; new: string; hunks: Hunk[] }
+  | { kind: "binary" }
+  | { kind: "too_large"; bytes: number };
 
 /** How the file tree marks each status. */
 export const FILE_STATUSES: Record<FileStatus, { label: string; letter: string; tone: string }> = {

@@ -1,11 +1,12 @@
-//! `Git::changed_files` against temp repos: a bare repo stands in for the
+//! `Git::changed_files` and `Git::file_diff` against temp repos: a bare repo stands in for the
 //! forge, and a clone of it for the user's clone.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use docent_git::{
-    ChangedFile, FileStatus, Git, GitError, LineCounts, PrWorktreePath, WorktreesRoot,
+    ChangedFile, FileDiff, FileStatus, Git, GitError, Hunk, LineCounts, PrWorktreePath,
+    WorktreesRoot,
 };
 
 fn git() -> Git {
@@ -98,10 +99,24 @@ impl Fixture {
         sh_git(&self.clone, &["rev-parse", "origin/main"])
     }
 
-    async fn changed(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>, GitError> {
+    async fn listed(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>, GitError> {
         git()
             .changed_files(&self.clone, "origin", &self.dest(), base, head)
             .await
+    }
+
+    /// The listing, without the blob IDs that only `file_diff` needs.
+    async fn changed(&self, base: &str, head: &str) -> Result<Vec<ChangedFile>, GitError> {
+        let mut files = self.listed(base, head).await?;
+        for file in &mut files {
+            (file.old_blob, file.new_blob) = (None, None);
+        }
+        Ok(files)
+    }
+
+    async fn diff(&self, file: &ChangedFile) -> Result<FileDiff, GitError> {
+        let (old, new) = (file.old_blob.as_deref(), file.new_blob.as_deref());
+        git().file_diff(&self.clone, &self.dest(), old, new).await
     }
 }
 
@@ -111,6 +126,8 @@ fn file(status: FileStatus, path: &str, added: u64, deleted: u64) -> ChangedFile
         old_path: None,
         status,
         lines: Some(LineCounts { added, deleted }),
+        old_blob: None,
+        new_blob: None,
     }
 }
 
@@ -318,4 +335,290 @@ async fn a_folder_that_is_not_the_prs_worktree_is_refused() {
     let err = f.changed(&f.main(), &head).await.unwrap_err();
 
     assert_eq!(err.kind(), "worktree_missing");
+}
+
+/// Git's own `-U0` hunks for `paths` between two commits, from the test
+/// machine's `git diff`.
+fn git_hunks(dir: &Path, base: &str, head: &str, paths: &[&str]) -> Vec<Hunk> {
+    let mut args = vec!["diff", "-U0", "-M", base, head, "--"];
+    args.extend(paths);
+    let count = |part: &str| -> (u64, u64) {
+        let (start, lines) = part.split_once(',').unwrap_or((part, "1"));
+        (start.parse().unwrap(), lines.parse().unwrap())
+    };
+    sh_git(dir, &args)
+        .lines()
+        .filter_map(|line| line.strip_prefix("@@ -"))
+        .map(|line| {
+            let mut parts = line.split(' ');
+            let (old_start, old_lines) = count(parts.next().unwrap());
+            let (new_start, new_lines) = count(&parts.next().unwrap()[1..]);
+            Hunk {
+                old_start,
+                old_lines,
+                new_start,
+                new_lines,
+            }
+        })
+        .collect()
+}
+
+fn text(diff: FileDiff) -> (String, String, Vec<Hunk>) {
+    match diff {
+        FileDiff::Text { old, new, hunks } => (old, new, hunks),
+        other => panic!("expected a text diff, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn each_files_diff_has_its_contents_and_gits_exact_hunks() {
+    // The M0 spike's cases: a pure deletion next to a blank line, and two
+    // hunks one unchanged line apart.
+    let spike_old = "x\nfoo\n\nfoo\nbar\n\n}\nkeep\n}\nlast\n";
+    let spike_new = "x\nfoo\nbar\n\n}\nnew\n}\nLAST\n";
+    let ten = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n";
+    let f = Fixture::new(&[
+        ("spike.txt", spike_old.as_bytes()),
+        ("old.txt", ten.as_bytes()),
+        ("gone.txt", b"a\nb\n"),
+        ("tail.txt", b"a\nb"),
+    ]);
+    f.write("spike.txt", spike_new.as_bytes());
+    std::fs::remove_file(f.work.join("old.txt")).unwrap();
+    f.write("new.txt", b"1\n2\n3\n4\n5\n6\n7\n8\n9\nten\n");
+    std::fs::remove_file(f.work.join("gone.txt")).unwrap();
+    f.write("tail.txt", b"a\nc");
+    f.write("added.txt", b"one\ntwo");
+    let head = f.open_pr().await;
+    let base = f.main();
+
+    let files = f.listed(&base, &head).await.expect("lists");
+    let mut diffs = Vec::new();
+    for file in &files {
+        diffs.push(text(f.diff(file).await.expect("diffs")));
+    }
+
+    let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        ["added.txt", "gone.txt", "new.txt", "spike.txt", "tail.txt"]
+    );
+    let wanted: [(&str, &str, &[&str]); 5] = [
+        ("", "one\ntwo", &["added.txt"]),
+        ("a\nb\n", "", &["gone.txt"]),
+        (
+            ten,
+            "1\n2\n3\n4\n5\n6\n7\n8\n9\nten\n",
+            &["old.txt", "new.txt"],
+        ),
+        (spike_old, spike_new, &["spike.txt"]),
+        ("a\nb", "a\nc", &["tail.txt"]),
+    ];
+    for ((old, new, hunks), (want_old, want_new, paths)) in diffs.into_iter().zip(wanted) {
+        assert_eq!((old.as_str(), new.as_str()), (want_old, want_new));
+        assert_eq!(hunks, git_hunks(&f.clone, &base, &head, paths), "{paths:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_listing_names_each_sides_blob() {
+    let f = Fixture::new(&[("a.txt", b"a\n"), ("gone.txt", b"g\n")]);
+    f.write("a.txt", b"b\n");
+    std::fs::remove_file(f.work.join("gone.txt")).unwrap();
+    let head = f.open_pr().await;
+    let base = f.main();
+
+    let files = f.listed(&base, &head).await.expect("lists");
+
+    let blob = |commit: &str, path: &str| {
+        Some(sh_git(
+            &f.clone,
+            &["rev-parse", &format!("{commit}:{path}")],
+        ))
+    };
+    let blobs: Vec<_> = files
+        .iter()
+        .map(|f| (f.old_blob.clone(), f.new_blob.clone()))
+        .collect();
+    assert_eq!(
+        blobs,
+        [
+            (blob(&base, "a.txt"), blob(&head, "a.txt")),
+            (blob(&base, "gone.txt"), None),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn binary_and_very_large_files_are_not_read_as_text() {
+    let f = Fixture::new(&[("blob.bin", b"a\0b"), ("big.txt", b"small\n")]);
+    f.write("blob.bin", b"a\0c");
+    let big = "line\n".repeat(1024 * 1024);
+    f.write("big.txt", big.as_bytes());
+    let head = f.open_pr().await;
+
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+
+    assert_eq!(
+        f.diff(&files[0]).await.expect("diffs"),
+        FileDiff::TooLarge {
+            bytes: big.len() as u64
+        }
+    );
+    assert_eq!(f.diff(&files[1]).await.expect("diffs"), FileDiff::Binary);
+}
+
+/// Two names that aren't UTF-8 can look the same once their bad bytes are
+/// replaced; each must still show its own diff.
+#[tokio::test]
+async fn look_alike_names_that_are_not_utf8_each_show_their_own_diff() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    for (name, contents) in [(&b"bad\xfe"[..], "first\n"), (b"bad\xff", "second\n")] {
+        f.write("tmp", contents.as_bytes());
+        let blob = sh_git(&f.work, &["hash-object", "-w", "tmp"]);
+        let mut entry = format!("100644,{blob},").into_bytes();
+        entry.extend(name);
+        let added = Command::new("git")
+            .args(["update-index", "--add", "--cacheinfo"])
+            .arg(std::ffi::OsString::from_vec(entry))
+            .current_dir(&f.work)
+            .status();
+        assert!(added.expect("run git").success());
+    }
+    std::fs::remove_file(f.work.join("tmp")).unwrap();
+    sh_git(&f.work, &["commit", "--quiet", "-m", "x"]);
+    let head = sh_git(&f.work, &["rev-parse", "HEAD"]);
+    f.open_pr_at(&f.main()).await;
+    sh_git(
+        &f.work,
+        &["push", "--quiet", "origin", &format!("{head}:refs/x/y")],
+    );
+    sh_git(&f.clone, &["fetch", "--quiet", "origin", "refs/x/y"]);
+
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+    let mut news = Vec::new();
+    for file in &files {
+        news.push(text(f.diff(file).await.expect("diffs")).1);
+    }
+
+    assert_eq!(files[0].path, files[1].path);
+    assert_eq!(news, ["first\n", "second\n"]);
+}
+
+/// The blob IDs come through the UI, so anything else is refused before git
+/// could read it as an option or a ref.
+#[tokio::test]
+async fn a_diff_of_anything_but_full_shas_is_refused() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let head = f.open_pr().await;
+    let blob = sh_git(&f.clone, &["rev-parse", &format!("{head}:a.txt")]);
+
+    for bad in ["", "HEAD:a.txt", "--output=x", &blob[..12]] {
+        for (old, new) in [(Some(bad), Some(blob.as_str())), (None, Some(bad))] {
+            let err = git()
+                .file_diff(&f.clone, &f.dest(), old, new)
+                .await
+                .unwrap_err();
+            assert_eq!(err, GitError::InvalidSha(bad.to_string()));
+        }
+    }
+}
+
+/// PR content is hostile: diffing must run none of the commands the clone's
+/// config names.
+#[tokio::test]
+async fn a_diff_runs_none_of_the_clones_configured_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    f.write("a.txt", b"b\n");
+    f.write(".gitattributes", b"* diff=evil\n");
+    let head = f.open_pr().await;
+    let marker = f.root.path().join("PWNED");
+    let script = f.clone.join(".git/evil.sh");
+    let body = format!("#!/bin/sh\ntouch '{}'\n", marker.display());
+    std::fs::write(&script, body).unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    for key in [
+        "core.fsmonitor",
+        "diff.external",
+        "diff.evil.command",
+        "diff.evil.textconv",
+    ] {
+        sh_git(&f.clone, &["config", key, script.to_str().unwrap()]);
+    }
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+
+    for file in &files {
+        f.diff(file).await.expect("diffs");
+    }
+
+    assert!(!marker.exists(), "a clone-configured command ran");
+}
+
+#[tokio::test]
+async fn a_diff_in_a_worktree_that_is_gone_says_so() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let blob = sh_git(&f.clone, &["rev-parse", "HEAD:a.txt"]);
+
+    let err = git()
+        .file_diff(&f.clone, &f.dest(), None, Some(&blob))
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), "worktree_missing");
+}
+
+/// A submodule's side names a commit in another repo, which isn't a blob
+/// this clone can read.
+#[tokio::test]
+async fn a_submodule_has_no_blob_to_diff() {
+    let f = Fixture::new(&[("a.txt", b"a\n")]);
+    let elsewhere = "1".repeat(40);
+    let entry = format!("160000,{elsewhere},sub");
+    sh_git(&f.work, &["update-index", "--add", "--cacheinfo", &entry]);
+    // Straight from the index: there's no folder for `add` to find.
+    sh_git(&f.work, &["commit", "--quiet", "-m", "x"]);
+    let head = sh_git(&f.work, &["rev-parse", "HEAD"]);
+    f.open_pr_at(&head).await;
+
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+
+    assert_eq!(files.len(), 1);
+    assert_eq!((&files[0].old_blob, &files[0].new_blob), (&None, &None));
+}
+
+/// Binary means a NUL byte in the first 8,000 bytes, as git decides when no
+/// attributes apply: a file of control bytes, or with a NUL further in, is
+/// text, and git counts its lines too.
+#[tokio::test]
+async fn only_a_nul_early_on_makes_a_file_binary_as_in_git() {
+    let late_nul = [&b"a\n".repeat(4001)[..], b"\0\n"].concat();
+    let f = Fixture::new(&[]);
+    f.write("ones", &[1; 64]);
+    f.write("late-nul", &late_nul);
+    f.write("early-nul", b"a\0\n");
+    let head = f.open_pr().await;
+
+    let files = f.listed(&f.main(), &head).await.expect("lists");
+    let mut kinds = Vec::new();
+    for file in &files {
+        kinds.push(match f.diff(file).await.expect("diffs") {
+            FileDiff::Text { .. } => "text",
+            FileDiff::Binary => "binary",
+            FileDiff::TooLarge { .. } => "too large",
+        });
+    }
+
+    let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
+    assert_eq!(paths, ["early-nul", "late-nul", "ones"]);
+    assert_eq!(kinds, ["binary", "text", "text"]);
+    let numstat = sh_git(&f.clone, &["diff", "--numstat", &f.main(), &head]);
+    let git_binary: Vec<_> = numstat
+        .lines()
+        .map(|line| line.starts_with("-\t-\t"))
+        .collect();
+    assert_eq!(git_binary, [true, false, false]);
 }

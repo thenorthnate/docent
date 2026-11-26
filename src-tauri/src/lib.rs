@@ -18,7 +18,7 @@ use std::time::Duration;
 use clone::CloneUpdate;
 use command_error::CommandError;
 use docent_forge::{AccountSummary, Accounts, GhCli, PullOverview, Section, SectionPulls};
-use docent_git::{ChangedFile, Git};
+use docent_git::{ChangedFile, FileDiff, Git};
 use docent_store::{RepoId, Store, WatchedRepo};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
@@ -227,6 +227,22 @@ async fn changed_files(
     files
 }
 
+/// One changed file's contents and git's hunks, read from its PR's open
+/// worktree. `blobs` are the file's, as `changed_files` listed them.
+#[tauri::command]
+async fn file_diff(
+    range: changed_files::PullRange,
+    blobs: changed_files::FileBlobs,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    store: State<'_, Store>,
+) -> Result<FileDiff, CommandError> {
+    let worktrees = worktrees(&app, &state, &store).await?;
+    // The eviction carries on in the background.
+    let (diff, _evicting) = worktrees.file_diff(&range, &blobs).await;
+    diff
+}
+
 /// The folder in Docent's data folder that holds every PR worktree, and what
 /// working in it needs.
 async fn worktrees(
@@ -309,6 +325,7 @@ pub fn run() {
             changed_files,
             clone_repo,
             connect_host,
+            file_diff,
             list_accounts,
             list_section,
             list_watched_repos,

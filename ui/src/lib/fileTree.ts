@@ -1,6 +1,6 @@
 import type { ChangedFile } from "@/lib/review";
 
-/** A line of the changed-files tree: a folder, or a file when `file` is set. */
+/** A line of the changed-files tree: a folder, or a file when `file` is set. Keys are unique, even for files whose names read the same. */
 export type FileTreeRow = { key: string; name: string; depth: number; file: ChangedFile | null };
 
 type Folder = { folders: Map<string, Folder>; files: ChangedFile[] };
@@ -18,6 +18,7 @@ export function fileName(path: string): string {
  */
 export function fileTreeRows(files: ChangedFile[]): FileTreeRow[] {
   const root = newFolder();
+  const order = new Map(files.map((file, index) => [file, index]));
   for (const file of files) {
     let folder = root;
     for (const name of file.path.split("/").slice(0, -1)) {
@@ -27,10 +28,10 @@ export function fileTreeRows(files: ChangedFile[]): FileTreeRow[] {
     }
     folder.files.push(file);
   }
-  return rowsIn(root, "", 0);
+  return rowsIn(root, "", 0, order);
 }
 
-function rowsIn(parent: Folder, path: string, depth: number): FileTreeRow[] {
+function rowsIn(parent: Folder, path: string, depth: number, order: Map<ChangedFile, number>): FileTreeRow[] {
   const rows: FileTreeRow[] = [];
   for (const [first, child] of inOrder([...parent.folders], ([name]) => name)) {
     let [name, folder] = [first, child];
@@ -40,10 +41,11 @@ function rowsIn(parent: Folder, path: string, depth: number): FileTreeRow[] {
       folder = only;
     }
     const key = `${path}${name}/`;
-    rows.push({ key, name, depth, file: null }, ...rowsIn(folder, key, depth + 1));
+    rows.push({ key, name, depth, file: null }, ...rowsIn(folder, key, depth + 1, order));
   }
   for (const file of inOrder(parent.files, (file) => file.path)) {
-    rows.push({ key: file.path, name: fileName(file.path), depth, file });
+    // Folder keys end in `/`, which a file key never does.
+    rows.push({ key: `${order.get(file)}:${file.path}`, name: fileName(file.path), depth, file });
   }
   return rows;
 }

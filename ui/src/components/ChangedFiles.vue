@@ -91,7 +91,7 @@ function describe(file: ChangedFile): string {
           :title="describe(row.file)"
           class="w-full rounded-md py-0.5 pr-2 text-left hover:bg-accent aria-[current=true]:bg-accent aria-[current=true]:font-medium"
           :style="indent(row.depth)"
-          @click="review.select(row.file.path)"
+          @click="review.select(row.file)"
         >
           <span class="flex items-center gap-2">
             <span

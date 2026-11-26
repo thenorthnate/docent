@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, ref, shallowRef } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { messageOf } from "@/lib/ipc";
 import type { ChangedFile } from "@/lib/review";
@@ -18,10 +18,21 @@ export type PullRange = {
 export const useReviewStore = defineStore("review", () => {
   const range = ref<PullRange | null>(null);
   /** `null` until they've loaded. */
-  const files = ref<ChangedFile[] | null>(null);
+  const files = shallowRef<ChangedFile[] | null>(null);
   const error = ref<string | null>(null);
-  const currentPath = ref<string | null>(null);
-  const currentFile = computed(() => files.value?.find((file) => file.path === currentPath.value) ?? null);
+  const current = shallowRef<ChangedFile | null>(null);
+  /**
+   * The selected file in the current list, found by path and blobs: two names
+   * that aren't UTF-8 can read the same, but then differ in their blobs, or
+   * have the same diff.
+   */
+  const currentFile = computed(() => {
+    const wanted = current.value;
+    if (!wanted) return null;
+    const same = (file: ChangedFile) =>
+      file.path === wanted.path && file.old_blob === wanted.old_blob && file.new_blob === wanted.new_blob;
+    return files.value?.find(same) ?? null;
+  });
 
   /** Counts loads, so only the latest one started may write its answer. */
   let latest = 0;
@@ -43,12 +54,12 @@ export const useReviewStore = defineStore("review", () => {
   /** Switches to `next`, or to nothing, forgetting the last range's files and selection. */
   async function show(next: PullRange | null) {
     range.value = next;
-    currentPath.value = null;
+    current.value = null;
     await load();
   }
 
-  function select(path: string) {
-    currentPath.value = path;
+  function select(file: ChangedFile) {
+    current.value = file;
   }
 
   return { range, files, error, currentFile, load, show, select };

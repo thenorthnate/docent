@@ -13,11 +13,13 @@ const HEAD = "a".repeat(40);
 const PR_PATH = "/review/github.com/octocat/Hello-World/1347";
 const OTHER_PATH = "/review/github.com/octocat/Hello-World/7";
 
+const [B1, B2, B3, B4, B5] = ["1", "2", "3", "4", "5"].map((c) => c.repeat(40));
+
 const FILES: ChangedFile[] = [
-  { path: "gone.txt", old_path: null, status: "deleted", lines: { added: 0, deleted: 3 } },
-  { path: "logo.png", old_path: null, status: "added", lines: null },
-  { path: "src/main.ts", old_path: null, status: "modified", lines: { added: 12, deleted: 4 } },
-  { path: "src/new.ts", old_path: "lib/old.ts", status: "renamed", lines: { added: 1, deleted: 1 } },
+  { path: "gone.txt", old_path: null, status: "deleted", lines: { added: 0, deleted: 3 }, old_blob: B1, new_blob: null },
+  { path: "logo.png", old_path: null, status: "added", lines: null, old_blob: null, new_blob: B2 },
+  { path: "src/main.ts", old_path: null, status: "modified", lines: { added: 12, deleted: 4 }, old_blob: B3, new_blob: B4 },
+  { path: "src/new.ts", old_path: "lib/old.ts", status: "renamed", lines: { added: 1, deleted: 1 }, old_blob: B5, new_blob: B5 },
 ];
 
 type Args = Record<string, unknown>;
@@ -142,7 +144,7 @@ describe("ReviewDrawer", () => {
 
     await router.push(OTHER_PATH);
     await flushPromises();
-    store.select("gone.txt");
+    store.select(FILES[0]);
     answerFirst(FILES);
     await flushPromises();
 

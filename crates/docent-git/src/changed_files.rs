@@ -18,6 +18,11 @@ pub struct ChangedFile {
     pub status: FileStatus,
     /// `None` for a binary file, which git doesn't count lines in.
     pub lines: Option<LineCounts>,
+    /// The file's contents before and after, as full object IDs; `None` on a
+    /// side where it doesn't exist or is a submodule. These name the file exactly for
+    /// [`Git::file_diff`], whatever its path.
+    pub old_blob: Option<String>,
+    pub new_blob: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -54,14 +59,7 @@ impl Git {
                 return Err(GitError::InvalidSha(sha.to_string()));
             }
         }
-        dest.check_inside()?;
-        let worktree = dest.path();
-        // Without its `.git` file, git would act on whatever repo is above the
-        // folder. The clone lists a worktree whose file is gone all the same.
-        let linked = worktree.join(".git").is_file();
-        if !linked || !self.is_worktree_of(clone, worktree).await? {
-            return Err(GitError::WorktreeMissing(worktree.display().to_string()));
-        }
+        let worktree = self.checked_worktree(clone, dest).await?;
         // A partial clone fetches the objects it lacks as each of these asks for
         // them, so they get as long as a fetch.
         let commit = format!("{base_sha}^{{commit}}");
@@ -97,14 +95,32 @@ impl Git {
             head_sha,
         ];
         let output = self
-            .run_hardened_bytes(dest.path(), &diff, NETWORK_TIMEOUT)
+            .run_hardened_bytes(worktree, &diff, NETWORK_TIMEOUT)
             .await?;
         parse(&output).ok_or_else(|| GitError::Failed("unexpected diff-tree output".to_string()))
+    }
+
+    /// `dest`'s folder, once it is checked to be inside Docent's worktrees
+    /// folder and an existing worktree of `clone`.
+    pub(crate) async fn checked_worktree<'a>(
+        &self,
+        clone: &Path,
+        dest: &'a PrWorktreePath,
+    ) -> Result<&'a Path, GitError> {
+        dest.check_inside()?;
+        let worktree = dest.path();
+        // Without its `.git` file, git would act on whatever repo is above the
+        // folder. The clone lists a worktree whose file is gone all the same.
+        let linked = worktree.join(".git").is_file();
+        if !linked || !self.is_worktree_of(clone, worktree).await? {
+            return Err(GitError::WorktreeMissing(worktree.display().to_string()));
+        }
+        Ok(worktree)
     }
 }
 
 /// Whether `sha` is a whole SHA-1 or SHA-256 object name.
-fn is_full_sha(sha: &str) -> bool {
+pub(crate) fn is_full_sha(sha: &str) -> bool {
     matches!(sha.len(), 40 | 64) && sha.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
@@ -119,7 +135,11 @@ fn parse(output: &[u8]) -> Option<Vec<ChangedFile>> {
     // `:100644 100644 <old> <new> R090`, then the old path if renamed, then
     // the path.
     while let Some(raw) = fields.next_if(|field| field.starts_with(':')) {
-        let status = match raw.rsplit(' ').next()?.chars().next()? {
+        let mut parts = raw[1..].split(' ');
+        let (old_mode, new_mode) = (parts.next()?, parts.next()?);
+        let old_blob = blob(old_mode, parts.next()?);
+        let new_blob = blob(new_mode, parts.next()?);
+        let status = match parts.next()?.chars().next()? {
             'A' => FileStatus::Added,
             'M' | 'T' => FileStatus::Modified,
             'D' => FileStatus::Deleted,
@@ -135,6 +155,8 @@ fn parse(output: &[u8]) -> Option<Vec<ChangedFile>> {
             old_path,
             status,
             lines: None,
+            old_blob,
+            new_blob,
         });
     }
     // `<added>\t<deleted>\t<path>`, or an empty path and then both paths in
@@ -154,4 +176,17 @@ fn parse(output: &[u8]) -> Option<Vec<ChangedFile>> {
         }
     }
     Some(files)
+}
+
+/// The mode git gives a submodule's entry (a "gitlink"). Its object ID names
+/// a commit in the submodule's own repo, not a blob in this one. Other modes
+/// are `100644` (a file), `100755` (an executable) and `120000` (a symlink,
+/// whose blob holds its target).
+const GITLINK_MODE: &str = "160000";
+
+/// A side's object ID from a raw record, if it is a blob: not the all-zero ID
+/// of a side the file doesn't exist on, nor a submodule's commit.
+fn blob(mode: &str, id: &str) -> Option<String> {
+    let absent = id.bytes().all(|byte| byte == b'0');
+    (!absent && mode != GITLINK_MODE).then(|| id.to_string())
 }
